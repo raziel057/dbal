@@ -19,11 +19,24 @@
 
 namespace Doctrine\DBAL\Platforms;
 
-use Doctrine\DBAL\DBALException;
-use Doctrine\DBAL\Schema\TableDiff;
+use Doctrine\DBAL\Schema\Identifier;
 use Doctrine\DBAL\Schema\Index;
 use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Schema\TableDiff;
 use Doctrine\DBAL\Types\BinaryType;
+use function array_merge;
+use function array_unique;
+use function array_values;
+use function count;
+use function func_get_args;
+use function implode;
+use function is_array;
+use function is_bool;
+use function is_numeric;
+use function is_string;
+use function join;
+use function sprintf;
+use function trim;
 
 /**
  * Drizzle platform
@@ -59,59 +72,21 @@ class DrizzlePlatform extends AbstractPlatform
     }
 
     /**
+     * {@inheritdoc}
+     */
+    protected function getDateArithmeticIntervalExpression($date, $operator, $interval, $unit)
+    {
+        $function = '+' === $operator ? 'DATE_ADD' : 'DATE_SUB';
+
+        return $function . '(' . $date . ', INTERVAL ' . $interval . ' ' . $unit . ')';
+    }
+
+    /**
      * {@inheritDoc}
      */
     public function getDateDiffExpression($date1, $date2)
     {
         return 'DATEDIFF(' . $date1 . ', ' . $date2 . ')';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getDateAddHourExpression($date, $hours)
-    {
-        return 'DATE_ADD(' . $date . ', INTERVAL ' . $hours . ' HOUR)';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getDateSubHourExpression($date, $hours)
-    {
-        return 'DATE_SUB(' . $date . ', INTERVAL ' . $hours . ' HOUR)';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getDateAddDaysExpression($date, $days)
-    {
-        return 'DATE_ADD(' . $date . ', INTERVAL ' . $days . ' DAY)';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getDateSubDaysExpression($date, $days)
-    {
-        return 'DATE_SUB(' . $date . ', INTERVAL ' . $days . ' DAY)';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getDateAddMonthExpression($date, $months)
-    {
-        return 'DATE_ADD(' . $date . ', INTERVAL ' . $months . ' MONTH)';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getDateSubMonthExpression($date, $months)
-    {
-        return 'DATE_SUB(' . $date . ', INTERVAL ' . $months . ' MONTH)';
     }
 
     /**
@@ -139,6 +114,7 @@ class DrizzlePlatform extends AbstractPlatform
         if ( ! empty($columnDef['autoincrement'])) {
             $autoinc = ' AUTO_INCREMENT';
         }
+
         return $autoinc;
     }
 
@@ -179,7 +155,7 @@ class DrizzlePlatform extends AbstractPlatform
      */
     protected function initializeDoctrineTypeMappings()
     {
-        $this->doctrineTypeMapping = array(
+        $this->doctrineTypeMapping = [
             'boolean'       => 'boolean',
             'varchar'       => 'string',
             'varbinary'     => 'binary',
@@ -193,7 +169,7 @@ class DrizzlePlatform extends AbstractPlatform
             'timestamp'     => 'datetime',
             'double'        => 'float',
             'bigint'        => 'bigint',
-        );
+        ];
     }
 
     /**
@@ -231,6 +207,116 @@ class DrizzlePlatform extends AbstractPlatform
     /**
      * {@inheritDoc}
      */
+    protected function _getCreateTableSQL($tableName, array $columns, array $options = [])
+    {
+        $queryFields = $this->getColumnDeclarationListSQL($columns);
+
+        if (isset($options['uniqueConstraints']) && ! empty($options['uniqueConstraints'])) {
+            foreach ($options['uniqueConstraints'] as $index => $definition) {
+                $queryFields .= ', ' . $this->getUniqueConstraintDeclarationSQL($index, $definition);
+            }
+        }
+
+        // add all indexes
+        if (isset($options['indexes']) && ! empty($options['indexes'])) {
+            foreach ($options['indexes'] as $index => $definition) {
+                $queryFields .= ', ' . $this->getIndexDeclarationSQL($index, $definition);
+            }
+        }
+
+        // attach all primary keys
+        if (isset($options['primary']) && ! empty($options['primary'])) {
+            $keyColumns = array_unique(array_values($options['primary']));
+            $queryFields .= ', PRIMARY KEY(' . implode(', ', $keyColumns) . ')';
+        }
+
+        $query = 'CREATE ';
+
+        if (!empty($options['temporary'])) {
+            $query .= 'TEMPORARY ';
+        }
+
+        $query .= 'TABLE ' . $tableName . ' (' . $queryFields . ') ';
+        $query .= $this->buildTableOptions($options);
+        $query .= $this->buildPartitionOptions($options);
+
+        $sql = [$query];
+
+        if (isset($options['foreignKeys'])) {
+            foreach ((array) $options['foreignKeys'] as $definition) {
+                $sql[] = $this->getCreateForeignKeySQL($definition, $tableName);
+            }
+        }
+
+        return $sql;
+    }
+
+    /**
+     * Build SQL for table options
+     *
+     * @param array $options
+     *
+     * @return string
+     */
+    private function buildTableOptions(array $options)
+    {
+        if (isset($options['table_options'])) {
+            return $options['table_options'];
+        }
+
+        $tableOptions = [];
+
+        // Collate
+        if ( ! isset($options['collate'])) {
+            $options['collate'] = 'utf8_unicode_ci';
+        }
+
+        $tableOptions[] = sprintf('COLLATE %s', $options['collate']);
+
+        // Engine
+        if ( ! isset($options['engine'])) {
+            $options['engine'] = 'InnoDB';
+        }
+
+        $tableOptions[] = sprintf('ENGINE = %s', $options['engine']);
+
+        // Auto increment
+        if (isset($options['auto_increment'])) {
+            $tableOptions[] = sprintf('AUTO_INCREMENT = %s', $options['auto_increment']);
+        }
+
+        // Comment
+        if (isset($options['comment'])) {
+            $comment = trim($options['comment'], " '");
+
+            $tableOptions[] = sprintf("COMMENT = %s ", $this->quoteStringLiteral($comment));
+        }
+
+        // Row format
+        if (isset($options['row_format'])) {
+            $tableOptions[] = sprintf('ROW_FORMAT = %s', $options['row_format']);
+        }
+
+        return implode(' ', $tableOptions);
+    }
+
+    /**
+     * Build SQL for partition options.
+     *
+     * @param array $options
+     *
+     * @return string
+     */
+    private function buildPartitionOptions(array $options)
+    {
+        return (isset($options['partition_options']))
+            ? ' ' . $options['partition_options']
+            : '';
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function getListDatabasesSQL()
     {
         return "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE CATALOG_NAME='LOCAL'";
@@ -241,7 +327,7 @@ class DrizzlePlatform extends AbstractPlatform
      */
     protected function getReservedKeywordsClass()
     {
-        return 'Doctrine\DBAL\Platforms\Keywords\DrizzleKeywords';
+        return Keywords\DrizzleKeywords::class;
     }
 
     /**
@@ -264,7 +350,7 @@ class DrizzlePlatform extends AbstractPlatform
         }
 
         return "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_COMMENT, IS_NULLABLE, IS_AUTO_INCREMENT, CHARACTER_MAXIMUM_LENGTH, COLUMN_DEFAULT," .
-               " NUMERIC_PRECISION, NUMERIC_SCALE" .
+               " NUMERIC_PRECISION, NUMERIC_SCALE, COLLATION_NAME" .
                " FROM DATA_DICTIONARY.COLUMNS" .
                " WHERE TABLE_SCHEMA=" . $database . " AND TABLE_NAME = '" . $table . "'";
     }
@@ -331,6 +417,14 @@ class DrizzlePlatform extends AbstractPlatform
     public function supportsViews()
     {
         return false;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function supportsColumnCollation()
+    {
+        return true;
     }
 
     /**
@@ -402,8 +496,8 @@ class DrizzlePlatform extends AbstractPlatform
      */
     public function getAlterTableSQL(TableDiff $diff)
     {
-        $columnSql = array();
-        $queryParts = array();
+        $columnSql = [];
+        $queryParts = [];
 
         if ($diff->newName !== false) {
             $queryParts[] =  'RENAME TO ' . $diff->getNewName()->getQuotedName($this);
@@ -456,18 +550,20 @@ class DrizzlePlatform extends AbstractPlatform
                 continue;
             }
 
+            $oldColumnName = new Identifier($oldColumnName);
+
             $columnArray = $column->toArray();
             $columnArray['comment'] = $this->getColumnComment($column);
-            $queryParts[] =  'CHANGE ' . $oldColumnName . ' '
+            $queryParts[] =  'CHANGE ' . $oldColumnName->getQuotedName($this) . ' '
                     . $this->getColumnDeclarationSQL($column->getQuotedName($this), $columnArray);
         }
 
-        $sql = array();
-        $tableSql = array();
+        $sql = [];
+        $tableSql = [];
 
         if ( ! $this->onSchemaAlterTable($diff, $tableSql)) {
             if (count($queryParts) > 0) {
-                $sql[] = 'ALTER TABLE ' . $diff->getName()->getQuotedName($this) . ' ' . implode(", ", $queryParts);
+                $sql[] = 'ALTER TABLE ' . $diff->getName($this)->getQuotedName($this) . ' ' . implode(", ", $queryParts);
             }
             $sql = array_merge(
                 $this->getPreAlterTableIndexForeignKeySQL($diff),
@@ -525,6 +621,8 @@ class DrizzlePlatform extends AbstractPlatform
 
     /**
      * {@inheritDoc}
+     *
+     * @deprecated Use application-generated UUIDs instead
      */
     public function getGuidExpression()
     {

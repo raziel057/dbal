@@ -20,6 +20,12 @@
 namespace Doctrine\DBAL\Schema;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use function array_keys;
+use function array_map;
+use function array_search;
+use function count;
+use function is_string;
+use function strtolower;
 
 class Index extends AbstractAsset implements Constraint
 {
@@ -29,39 +35,51 @@ class Index extends AbstractAsset implements Constraint
      *
      * @var Identifier[]
      */
-    protected $_columns = array();
+    protected $_columns = [];
 
     /**
-     * @var boolean
+     * @var bool
      */
     protected $_isUnique = false;
 
     /**
-     * @var boolean
+     * @var bool
      */
     protected $_isPrimary = false;
 
     /**
      * Platform specific flags for indexes.
+     * array($flagName => true)
      *
      * @var array
      */
-    protected $_flags = array();
+    protected $_flags = [];
 
     /**
-     * @param string  $indexName
-     * @param array   $columns
-     * @param boolean $isUnique
-     * @param boolean $isPrimary
-     * @param array   $flags
+     * Platform specific options
+     *
+     * @todo $_flags should eventually be refactored into options
+     *
+     * @var array
      */
-    public function __construct($indexName, array $columns, $isUnique = false, $isPrimary = false, array $flags = array())
+    private $options = [];
+
+    /**
+     * @param string   $indexName
+     * @param string[] $columns
+     * @param bool     $isUnique
+     * @param bool     $isPrimary
+     * @param string[] $flags
+     * @param array    $options
+     */
+    public function __construct($indexName, array $columns, $isUnique = false, $isPrimary = false, array $flags = [], array $options = [])
     {
-        $isUnique = ($isPrimary)?true:$isUnique;
+        $isUnique = $isUnique || $isPrimary;
 
         $this->_setName($indexName);
         $this->_isUnique = $isUnique;
         $this->_isPrimary = $isPrimary;
+        $this->options = $options;
 
         foreach ($columns as $column) {
             $this->_addColumn($column);
@@ -100,7 +118,7 @@ class Index extends AbstractAsset implements Constraint
      */
     public function getQuotedColumns(AbstractPlatform $platform)
     {
-        $columns = array();
+        $columns = [];
 
         foreach ($this->_columns as $column) {
             $columns[] = $column->getQuotedName($platform);
@@ -110,17 +128,17 @@ class Index extends AbstractAsset implements Constraint
     }
 
     /**
-     * @return array
+     * @return string[]
      */
     public function getUnquotedColumns()
     {
-        return array_map(array($this, 'trimQuotes'), $this->getColumns());
+        return array_map([$this, 'trimQuotes'], $this->getColumns());
     }
 
     /**
      * Is the index neither unique nor primary key?
      *
-     * @return boolean
+     * @return bool
      */
     public function isSimpleIndex()
     {
@@ -128,7 +146,7 @@ class Index extends AbstractAsset implements Constraint
     }
 
     /**
-     * @return boolean
+     * @return bool
      */
     public function isUnique()
     {
@@ -136,7 +154,7 @@ class Index extends AbstractAsset implements Constraint
     }
 
     /**
-     * @return boolean
+     * @return bool
      */
     public function isPrimary()
     {
@@ -144,10 +162,10 @@ class Index extends AbstractAsset implements Constraint
     }
 
     /**
-     * @param string  $columnName
-     * @param integer $pos
+     * @param string $columnName
+     * @param int    $pos
      *
-     * @return boolean
+     * @return bool
      */
     public function hasColumnAtPosition($columnName, $pos = 0)
     {
@@ -162,7 +180,7 @@ class Index extends AbstractAsset implements Constraint
      *
      * @param array $columnNames
      *
-     * @return boolean
+     * @return bool
      */
     public function spansColumns(array $columnNames)
     {
@@ -182,9 +200,9 @@ class Index extends AbstractAsset implements Constraint
     /**
      * Checks if the other index already fulfills all the indexing and constraint needs of the current one.
      *
-     * @param \Doctrine\DBAL\Schema\Index $other
+     * @param Index $other
      *
-     * @return boolean
+     * @return bool
      */
     public function isFullfilledBy(Index $other)
     {
@@ -198,19 +216,23 @@ class Index extends AbstractAsset implements Constraint
         $sameColumns = $this->spansColumns($other->getColumns());
 
         if ($sameColumns) {
-            if ( ! $this->isUnique() && !$this->isPrimary()) {
-                // this is a special case: If the current key is neither primary or unique, any uniqe or
+            if ( ! $this->samePartialIndex($other)) {
+                return false;
+            }
+
+            if ( ! $this->isUnique() && ! $this->isPrimary()) {
+                // this is a special case: If the current key is neither primary or unique, any unique or
                 // primary key will always have the same effect for the index and there cannot be any constraint
                 // overlaps. This means a primary or unique index can always fulfill the requirements of just an
                 // index that has no constraints.
                 return true;
-            } elseif ($other->isPrimary() != $this->isPrimary()) {
-                return false;
-            } elseif ($other->isUnique() != $this->isUnique()) {
+            }
+
+            if ($other->isPrimary() != $this->isPrimary()) {
                 return false;
             }
 
-            return true;
+            return $other->isUnique() === $this->isUnique();
         }
 
         return false;
@@ -219,9 +241,9 @@ class Index extends AbstractAsset implements Constraint
     /**
      * Detects if the other index is a non-unique, non primary index that can be overwritten by this one.
      *
-     * @param \Doctrine\DBAL\Schema\Index $other
+     * @param Index $other
      *
-     * @return boolean
+     * @return bool
      */
     public function overrules(Index $other)
     {
@@ -231,17 +253,13 @@ class Index extends AbstractAsset implements Constraint
             return false;
         }
 
-        if ($this->spansColumns($other->getColumns()) && ($this->isPrimary() || $this->isUnique())) {
-            return true;
-        }
-
-        return false;
+        return $this->spansColumns($other->getColumns()) && ($this->isPrimary() || $this->isUnique()) && $this->samePartialIndex($other);
     }
 
     /**
      * Returns platform specific flags for indexes.
      *
-     * @return array
+     * @return string[]
      */
     public function getFlags()
     {
@@ -255,7 +273,7 @@ class Index extends AbstractAsset implements Constraint
      *
      * @param string $flag
      *
-     * @return \Doctrine\DBAL\Schema\Index
+     * @return Index
      */
     public function addFlag($flag)
     {
@@ -269,7 +287,7 @@ class Index extends AbstractAsset implements Constraint
      *
      * @param string $flag
      *
-     * @return boolean
+     * @return bool
      */
     public function hasFlag($flag)
     {
@@ -287,4 +305,48 @@ class Index extends AbstractAsset implements Constraint
     {
         unset($this->_flags[strtolower($flag)]);
     }
+
+    /**
+     * @param string $name
+     *
+     * @return bool
+     */
+    public function hasOption($name)
+    {
+        return isset($this->options[strtolower($name)]);
+    }
+
+    /**
+     * @param string $name
+     *
+     * @return mixed
+     */
+    public function getOption($name)
+    {
+        return $this->options[strtolower($name)];
+    }
+
+    /**
+     * @return array
+     */
+    public function getOptions()
+    {
+        return $this->options;
+    }
+
+    /**
+     * Return whether the two indexes have the same partial index
+     * @param \Doctrine\DBAL\Schema\Index $other
+     *
+     * @return bool
+     */
+    private function samePartialIndex(Index $other)
+    {
+        if ($this->hasOption('where') && $other->hasOption('where') && $this->getOption('where') == $other->getOption('where')) {
+            return true;
+        }
+
+        return ! $this->hasOption('where') && ! $other->hasOption('where');
+    }
+
 }

@@ -2,13 +2,13 @@
 
 namespace Doctrine\Tests\DBAL\Schema;
 
-require_once __DIR__ . '/../../TestInit.php';
-
 use Doctrine\DBAL\Schema\Schema;
-use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\Sequence;
+use Doctrine\DBAL\Schema\Table;
+use function current;
+use function strlen;
 
-class SchemaTest extends \PHPUnit_Framework_TestCase
+class SchemaTest extends \PHPUnit\Framework\TestCase
 {
     public function testAddTable()
     {
@@ -17,31 +17,31 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
 
         $schema = new Schema(array($table));
 
-        $this->assertTrue($schema->hasTable($tableName));
+        self::assertTrue($schema->hasTable($tableName));
 
         $tables = $schema->getTables();
-        $this->assertTrue( isset($tables[$tableName]) );
-        $this->assertSame($table, $tables[$tableName]);
-        $this->assertSame($table, $schema->getTable($tableName));
-        $this->assertTrue($schema->hasTable($tableName));
+        self::assertArrayHasKey($tableName, $tables);
+        self::assertSame($table, $tables[$tableName]);
+        self::assertSame($table, $schema->getTable($tableName));
+        self::assertTrue($schema->hasTable($tableName));
     }
 
-    public function testTableMatchingCaseInsenstive()
+    public function testTableMatchingCaseInsensitive()
     {
         $table = new Table("Foo");
 
         $schema = new Schema(array($table));
-        $this->assertTrue($schema->hasTable("foo"));
-        $this->assertTrue($schema->hasTable("FOO"));
+        self::assertTrue($schema->hasTable("foo"));
+        self::assertTrue($schema->hasTable("FOO"));
 
-        $this->assertSame($table, $schema->getTable('FOO'));
-        $this->assertSame($table, $schema->getTable('foo'));
-        $this->assertSame($table, $schema->getTable('Foo'));
+        self::assertSame($table, $schema->getTable('FOO'));
+        self::assertSame($table, $schema->getTable('foo'));
+        self::assertSame($table, $schema->getTable('Foo'));
     }
 
     public function testGetUnknownTableThrowsException()
     {
-        $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
+        $this->expectException("Doctrine\DBAL\Schema\SchemaException");
 
         $schema = new Schema();
         $schema->getTable("unknown");
@@ -49,7 +49,7 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
 
     public function testCreateTableTwiceThrowsException()
     {
-        $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
+        $this->expectException("Doctrine\DBAL\Schema\SchemaException");
 
         $tableName = "foo";
         $table = new Table($tableName);
@@ -64,11 +64,11 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $table = new Table($tableName);
         $schema = new Schema(array($table));
 
-        $this->assertTrue($schema->hasTable("foo"));
+        self::assertTrue($schema->hasTable("foo"));
         $schema->renameTable("foo", "bar");
-        $this->assertFalse($schema->hasTable("foo"));
-        $this->assertTrue($schema->hasTable("bar"));
-        $this->assertSame($table, $schema->getTable("bar"));
+        self::assertFalse($schema->hasTable("foo"));
+        self::assertTrue($schema->hasTable("bar"));
+        self::assertSame($table, $schema->getTable("bar"));
     }
 
     public function testDropTable()
@@ -77,24 +77,24 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $table = new Table($tableName);
         $schema = new Schema(array($table));
 
-        $this->assertTrue($schema->hasTable("foo"));
+        self::assertTrue($schema->hasTable("foo"));
 
         $schema->dropTable("foo");
 
-        $this->assertFalse($schema->hasTable("foo"));
+        self::assertFalse($schema->hasTable("foo"));
     }
 
     public function testCreateTable()
     {
         $schema = new Schema();
 
-        $this->assertFalse($schema->hasTable("foo"));
+        self::assertFalse($schema->hasTable("foo"));
 
         $table = $schema->createTable("foo");
 
-        $this->assertInstanceOf('Doctrine\DBAL\Schema\Table', $table);
-        $this->assertEquals("foo", $table->getName());
-        $this->assertTrue($schema->hasTable("foo"));
+        self::assertInstanceOf('Doctrine\DBAL\Schema\Table', $table);
+        self::assertEquals("foo", $table->getName());
+        self::assertTrue($schema->hasTable("foo"));
     }
 
     public function testAddSequences()
@@ -103,11 +103,11 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
 
         $schema = new Schema(array(), array($sequence));
 
-        $this->assertTrue($schema->hasSequence("a_seq"));
-        $this->assertInstanceOf('Doctrine\DBAL\Schema\Sequence', $schema->getSequence("a_seq"));
+        self::assertTrue($schema->hasSequence("a_seq"));
+        self::assertInstanceOf('Doctrine\DBAL\Schema\Sequence', $schema->getSequence("a_seq"));
 
         $sequences = $schema->getSequences();
-        $this->assertArrayHasKey('public.a_seq', $sequences);
+        self::assertArrayHasKey('public.a_seq', $sequences);
     }
 
     public function testSequenceAccessCaseInsensitive()
@@ -115,18 +115,18 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $sequence = new Sequence("a_Seq");
 
         $schema = new Schema(array(), array($sequence));
-        $this->assertTrue($schema->hasSequence('a_seq'));
-        $this->assertTrue($schema->hasSequence('a_Seq'));
-        $this->assertTrue($schema->hasSequence('A_SEQ'));
+        self::assertTrue($schema->hasSequence('a_seq'));
+        self::assertTrue($schema->hasSequence('a_Seq'));
+        self::assertTrue($schema->hasSequence('A_SEQ'));
 
-        $this->assertEquals($sequence, $schema->getSequence('a_seq'));
-        $this->assertEquals($sequence, $schema->getSequence('a_Seq'));
-        $this->assertEquals($sequence, $schema->getSequence('A_SEQ'));
+        self::assertEquals($sequence, $schema->getSequence('a_seq'));
+        self::assertEquals($sequence, $schema->getSequence('a_Seq'));
+        self::assertEquals($sequence, $schema->getSequence('A_SEQ'));
     }
 
     public function testGetUnknownSequenceThrowsException()
     {
-        $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
+        $this->expectException("Doctrine\DBAL\Schema\SchemaException");
 
         $schema = new Schema();
         $schema->getSequence("unknown");
@@ -137,15 +137,15 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $schema = new Schema();
         $sequence = $schema->createSequence('a_seq', 10, 20);
 
-        $this->assertEquals('a_seq', $sequence->getName());
-        $this->assertEquals(10, $sequence->getAllocationSize());
-        $this->assertEquals(20, $sequence->getInitialValue());
+        self::assertEquals('a_seq', $sequence->getName());
+        self::assertEquals(10, $sequence->getAllocationSize());
+        self::assertEquals(20, $sequence->getInitialValue());
 
-        $this->assertTrue($schema->hasSequence("a_seq"));
-        $this->assertInstanceOf('Doctrine\DBAL\Schema\Sequence', $schema->getSequence("a_seq"));
+        self::assertTrue($schema->hasSequence("a_seq"));
+        self::assertInstanceOf('Doctrine\DBAL\Schema\Sequence', $schema->getSequence("a_seq"));
 
         $sequences = $schema->getSequences();
-        $this->assertArrayHasKey('public.a_seq', $sequences);
+        self::assertArrayHasKey('public.a_seq', $sequences);
     }
 
     public function testDropSequence()
@@ -155,12 +155,12 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $schema = new Schema(array(), array($sequence));
 
         $schema->dropSequence("a_seq");
-        $this->assertFalse($schema->hasSequence("a_seq"));
+        self::assertFalse($schema->hasSequence("a_seq"));
     }
 
     public function testAddSequenceTwiceThrowsException()
     {
-        $this->setExpectedException("Doctrine\DBAL\Schema\SchemaException");
+        $this->expectException("Doctrine\DBAL\Schema\SchemaException");
 
         $sequence = new Sequence("a_seq", 1, 1);
 
@@ -178,7 +178,7 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $table->addIndex(array('long_id'));
 
         $index = current($table->getIndexes());
-        $this->assertEquals(5, strlen($index->getName()));
+        self::assertEquals(5, strlen($index->getName()));
     }
 
     public function testDeepClone()
@@ -196,17 +196,17 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
 
         $schemaNew = clone $schema;
 
-        $this->assertNotSame($sequence, $schemaNew->getSequence('baz'));
+        self::assertNotSame($sequence, $schemaNew->getSequence('baz'));
 
-        $this->assertNotSame($tableA, $schemaNew->getTable('foo'));
-        $this->assertNotSame($tableA->getColumn('id'), $schemaNew->getTable('foo')->getColumn('id'));
+        self::assertNotSame($tableA, $schemaNew->getTable('foo'));
+        self::assertNotSame($tableA->getColumn('id'), $schemaNew->getTable('foo')->getColumn('id'));
 
-        $this->assertNotSame($tableB, $schemaNew->getTable('bar'));
-        $this->assertNotSame($tableB->getColumn('id'), $schemaNew->getTable('bar')->getColumn('id'));
+        self::assertNotSame($tableB, $schemaNew->getTable('bar'));
+        self::assertNotSame($tableB->getColumn('id'), $schemaNew->getTable('bar')->getColumn('id'));
 
         $fk = $schemaNew->getTable('bar')->getForeignKeys();
         $fk = current($fk);
-        $this->assertSame($schemaNew->getTable('bar'), $this->readAttribute($fk, '_localTable'));
+        self::assertSame($schemaNew->getTable('bar'), $this->readAttribute($fk, '_localTable'));
     }
 
     /**
@@ -219,6 +219,236 @@ class SchemaTest extends \PHPUnit_Framework_TestCase
         $tableA = $schema->createTable('foo');
         $tableA->addColumn('id', 'integer');
 
-        $this->assertTrue($schema->hasTable('`foo`'));
+        self::assertTrue($schema->hasTable('`foo`'));
+    }
+
+    /**
+     * @group DBAL-669
+     */
+    public function testHasNamespace()
+    {
+        $schema = new Schema();
+
+        self::assertFalse($schema->hasNamespace('foo'));
+
+        $schema->createTable('foo');
+
+        self::assertFalse($schema->hasNamespace('foo'));
+
+        $schema->createTable('bar.baz');
+
+        self::assertFalse($schema->hasNamespace('baz'));
+        self::assertTrue($schema->hasNamespace('bar'));
+        self::assertFalse($schema->hasNamespace('tab'));
+
+        $schema->createTable('tab.taz');
+
+        self::assertTrue($schema->hasNamespace('tab'));
+    }
+
+    /**
+     * @group DBAL-669
+     */
+    public function testCreatesNamespace()
+    {
+        $schema = new Schema();
+
+        self::assertFalse($schema->hasNamespace('foo'));
+
+        $schema->createNamespace('foo');
+
+        self::assertTrue($schema->hasNamespace('foo'));
+        self::assertTrue($schema->hasNamespace('FOO'));
+        self::assertTrue($schema->hasNamespace('`foo`'));
+        self::assertTrue($schema->hasNamespace('`FOO`'));
+
+        $schema->createNamespace('`bar`');
+
+        self::assertTrue($schema->hasNamespace('bar'));
+        self::assertTrue($schema->hasNamespace('BAR'));
+        self::assertTrue($schema->hasNamespace('`bar`'));
+        self::assertTrue($schema->hasNamespace('`BAR`'));
+
+        self::assertSame(array('foo' => 'foo', 'bar' => '`bar`'), $schema->getNamespaces());
+    }
+
+    /**
+     * @group DBAL-669
+     *
+     * @expectedException \Doctrine\DBAL\Schema\SchemaException
+     */
+    public function testThrowsExceptionOnCreatingNamespaceTwice()
+    {
+        $schema = new Schema();
+
+        $schema->createNamespace('foo');
+        $schema->createNamespace('foo');
+    }
+
+    /**
+     * @group DBAL-669
+     */
+    public function testCreatesNamespaceThroughAddingTableImplicitly()
+    {
+        $schema = new Schema();
+
+        self::assertFalse($schema->hasNamespace('foo'));
+
+        $schema->createTable('baz');
+
+        self::assertFalse($schema->hasNamespace('foo'));
+        self::assertFalse($schema->hasNamespace('baz'));
+
+        $schema->createTable('foo.bar');
+
+        self::assertTrue($schema->hasNamespace('foo'));
+        self::assertFalse($schema->hasNamespace('bar'));
+
+        $schema->createTable('`baz`.bloo');
+
+        self::assertTrue($schema->hasNamespace('baz'));
+        self::assertFalse($schema->hasNamespace('bloo'));
+
+        $schema->createTable('`baz`.moo');
+
+        self::assertTrue($schema->hasNamespace('baz'));
+        self::assertFalse($schema->hasNamespace('moo'));
+    }
+
+    /**
+     * @group DBAL-669
+     */
+    public function testCreatesNamespaceThroughAddingSequenceImplicitly()
+    {
+        $schema = new Schema();
+
+        self::assertFalse($schema->hasNamespace('foo'));
+
+        $schema->createSequence('baz');
+
+        self::assertFalse($schema->hasNamespace('foo'));
+        self::assertFalse($schema->hasNamespace('baz'));
+
+        $schema->createSequence('foo.bar');
+
+        self::assertTrue($schema->hasNamespace('foo'));
+        self::assertFalse($schema->hasNamespace('bar'));
+
+        $schema->createSequence('`baz`.bloo');
+
+        self::assertTrue($schema->hasNamespace('baz'));
+        self::assertFalse($schema->hasNamespace('bloo'));
+
+        $schema->createSequence('`baz`.moo');
+
+        self::assertTrue($schema->hasNamespace('baz'));
+        self::assertFalse($schema->hasNamespace('moo'));
+    }
+
+    /**
+     * @group DBAL-669
+     */
+    public function testVisitsVisitor()
+    {
+        $schema = new Schema();
+        $visitor = $this->createMock('Doctrine\DBAL\Schema\Visitor\Visitor');
+
+        $schema->createNamespace('foo');
+        $schema->createNamespace('bar');
+
+        $schema->createTable('baz');
+        $schema->createTable('bla.bloo');
+
+        $schema->createSequence('moo');
+        $schema->createSequence('war');
+
+        $visitor->expects($this->once())
+            ->method('acceptSchema')
+            ->with($schema);
+
+        $visitor->expects($this->at(1))
+            ->method('acceptTable')
+            ->with($schema->getTable('baz'));
+
+        $visitor->expects($this->at(2))
+            ->method('acceptTable')
+            ->with($schema->getTable('bla.bloo'));
+
+        $visitor->expects($this->exactly(2))
+            ->method('acceptTable');
+
+        $visitor->expects($this->at(3))
+            ->method('acceptSequence')
+            ->with($schema->getSequence('moo'));
+
+        $visitor->expects($this->at(4))
+            ->method('acceptSequence')
+            ->with($schema->getSequence('war'));
+
+        $visitor->expects($this->exactly(2))
+            ->method('acceptSequence');
+
+        self::assertNull($schema->visit($visitor));
+    }
+
+    /**
+     * @group DBAL-669
+     */
+    public function testVisitsNamespaceVisitor()
+    {
+        $schema = new Schema();
+        $visitor = $this->createMock('Doctrine\DBAL\Schema\Visitor\AbstractVisitor');
+
+        $schema->createNamespace('foo');
+        $schema->createNamespace('bar');
+
+        $schema->createTable('baz');
+        $schema->createTable('bla.bloo');
+
+        $schema->createSequence('moo');
+        $schema->createSequence('war');
+
+        $visitor->expects($this->once())
+            ->method('acceptSchema')
+            ->with($schema);
+
+        $visitor->expects($this->at(1))
+            ->method('acceptNamespace')
+            ->with('foo');
+
+        $visitor->expects($this->at(2))
+            ->method('acceptNamespace')
+            ->with('bar');
+
+        $visitor->expects($this->at(3))
+            ->method('acceptNamespace')
+            ->with('bla');
+
+        $visitor->expects($this->exactly(3))
+            ->method('acceptNamespace');
+
+        $visitor->expects($this->at(4))
+            ->method('acceptTable')
+            ->with($schema->getTable('baz'));
+
+        $visitor->expects($this->at(5))
+            ->method('acceptTable')
+            ->with($schema->getTable('bla.bloo'));
+
+        $visitor->expects($this->exactly(2))
+            ->method('acceptTable');
+
+        $visitor->expects($this->at(6))
+            ->method('acceptSequence')
+            ->with($schema->getSequence('moo'));
+
+        $visitor->expects($this->at(7))
+            ->method('acceptSequence')
+            ->with($schema->getSequence('war'));
+
+        $visitor->expects($this->exactly(2))
+            ->method('acceptSequence');
+
+        self::assertNull($schema->visit($visitor));
     }
 }

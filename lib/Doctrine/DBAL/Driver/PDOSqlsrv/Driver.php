@@ -19,23 +19,26 @@
 
 namespace Doctrine\DBAL\Driver\PDOSqlsrv;
 
-use Doctrine\DBAL\Platforms\SQLServer2008Platform;
-use Doctrine\DBAL\Schema\SQLServerSchemaManager;
+use Doctrine\DBAL\Driver\AbstractSQLServerDriver;
+use function is_int;
+use function sprintf;
 
 /**
  * The PDO-based Sqlsrv driver.
  *
  * @since 2.0
  */
-class Driver implements \Doctrine\DBAL\Driver
+class Driver extends AbstractSQLServerDriver
 {
     /**
      * {@inheritdoc}
      */
-    public function connect(array $params, $username = null, $password = null, array $driverOptions = array())
+    public function connect(array $params, $username = null, $password = null, array $driverOptions = [])
     {
+        [$driverOptions, $connectionOptions] = $this->splitOptions($driverOptions);
+
         return new Connection(
-            $this->_constructPdoDsn($params),
+            $this->_constructPdoDsn($params, $connectionOptions),
             $username,
             $password,
             $driverOptions
@@ -46,10 +49,11 @@ class Driver implements \Doctrine\DBAL\Driver
      * Constructs the Sqlsrv PDO DSN.
      *
      * @param array $params
+     * @param string[] $connectionOptions
      *
      * @return string The DSN.
      */
-    private function _constructPdoDsn(array $params)
+    private function _constructPdoDsn(array $params, array $connectionOptions)
     {
         $dsn = 'sqlsrv:server=';
 
@@ -61,31 +65,55 @@ class Driver implements \Doctrine\DBAL\Driver
             $dsn .= ',' . $params['port'];
         }
 
-        if (isset($params['dbname'])) {;
-            $dsn .= ';Database=' .  $params['dbname'];
+        if (isset($params['dbname'])) {
+            $connectionOptions['Database'] = $params['dbname'];
         }
 
         if (isset($params['MultipleActiveResultSets'])) {
-            $dsn .= '; MultipleActiveResultSets=' . ($params['MultipleActiveResultSets'] ? 'true' : 'false');
+            $connectionOptions['MultipleActiveResultSets'] = $params['MultipleActiveResultSets'] ? 'true' : 'false';
         }
+
+        $dsn .= $this->getConnectionOptionsDsn($connectionOptions);
 
         return $dsn;
     }
 
     /**
-     * {@inheritdoc}
+     * Separates a connection options from a driver options
+     *
+     * @param int[]|string[] $options
+     * @return int[][]|string[][]
      */
-    public function getDatabasePlatform()
+    private function splitOptions(array $options) : array
     {
-        return new SQLServer2008Platform();
-    }
-    /**
-     * {@inheritdoc}
-     */
+        $driverOptions     = [];
+        $connectionOptions = [];
 
-    public function getSchemaManager(\Doctrine\DBAL\Connection $conn)
+        foreach ($options as $optionKey => $optionValue) {
+            if (is_int($optionKey)) {
+                $driverOptions[$optionKey] = $optionValue;
+            } else {
+                $connectionOptions[$optionKey] = $optionValue;
+            }
+        }
+
+        return [$driverOptions, $connectionOptions];
+    }
+
+    /**
+     * Converts a connection options array to the DSN
+     *
+     * @param string[] $connectionOptions
+     */
+    private function getConnectionOptionsDsn(array $connectionOptions) : string
     {
-        return new SQLServerSchemaManager($conn);
+        $connectionOptionsDsn = '';
+
+        foreach ($connectionOptions as $paramName => $paramValue) {
+            $connectionOptionsDsn .= sprintf(';%s=%s', $paramName, $paramValue);
+        }
+
+        return $connectionOptionsDsn;
     }
 
     /**
@@ -94,23 +122,5 @@ class Driver implements \Doctrine\DBAL\Driver
     public function getName()
     {
         return 'pdo_sqlsrv';
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getDatabase(\Doctrine\DBAL\Connection $conn)
-    {
-        $params = $conn->getParams();
-
-        return $params['dbname'];
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function convertExceptionCode(\Exception $exception)
-    {
-        return 0;
     }
 }

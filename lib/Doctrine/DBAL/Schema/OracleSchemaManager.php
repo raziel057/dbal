@@ -19,6 +19,22 @@
 
 namespace Doctrine\DBAL\Schema;
 
+use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Driver\DriverException;
+use Doctrine\DBAL\Platforms\OraclePlatform;
+use Doctrine\DBAL\Types\Type;
+use const CASE_LOWER;
+use function array_change_key_case;
+use function array_values;
+use function assert;
+use function is_null;
+use function preg_match;
+use function sprintf;
+use function strpos;
+use function strtolower;
+use function strtoupper;
+use function trim;
+
 /**
  * Oracle Schema Manager.
  *
@@ -32,11 +48,39 @@ class OracleSchemaManager extends AbstractSchemaManager
     /**
      * {@inheritdoc}
      */
+    public function dropDatabase($database)
+    {
+        try {
+            parent::dropDatabase($database);
+        } catch (DBALException $exception) {
+            $exception = $exception->getPrevious();
+
+            if (! $exception instanceof DriverException) {
+                throw $exception;
+            }
+
+            // If we have a error code 1940 (ORA-01940), the drop database operation failed
+            // because of active connections on the database.
+            // To force dropping the database, we first have to close all active connections
+            // on that database and issue the drop database operation again.
+            if ($exception->getErrorCode() !== 1940) {
+                throw $exception;
+            }
+
+            $this->killUserSessions($database);
+
+            parent::dropDatabase($database);
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     protected function _getPortableViewDefinition($view)
     {
         $view = \array_change_key_case($view, CASE_LOWER);
 
-        return new View($view['view_name'], $view['text']);
+        return new View($this->getQuotedIdentifierName($view['view_name']), $view['text']);
     }
 
     /**
@@ -46,9 +90,9 @@ class OracleSchemaManager extends AbstractSchemaManager
     {
         $user = \array_change_key_case($user, CASE_LOWER);
 
-        return array(
+        return [
             'user' => $user['username'],
-        );
+        ];
     }
 
     /**
@@ -58,7 +102,7 @@ class OracleSchemaManager extends AbstractSchemaManager
     {
         $table = \array_change_key_case($table, CASE_LOWER);
 
-        return $table['table_name'];
+        return $this->getQuotedIdentifierName($table['table_name']);
     }
 
     /**
@@ -69,11 +113,12 @@ class OracleSchemaManager extends AbstractSchemaManager
      */
     protected function _getPortableTableIndexesList($tableIndexes, $tableName=null)
     {
-        $indexBuffer = array();
+        $indexBuffer = [];
         foreach ($tableIndexes as $tableIndex) {
             $tableIndex = \array_change_key_case($tableIndex, CASE_LOWER);
 
             $keyName = strtolower($tableIndex['name']);
+            $buffer  = [];
 
             if (strtolower($tableIndex['is_primary']) == "p") {
                 $keyName = 'primary';
@@ -81,10 +126,10 @@ class OracleSchemaManager extends AbstractSchemaManager
                 $buffer['non_unique'] = false;
             } else {
                 $buffer['primary'] = false;
-                $buffer['non_unique'] = ($tableIndex['is_unique'] == 0) ? true : false;
+                $buffer['non_unique'] = ! $tableIndex['is_unique'];
             }
             $buffer['key_name'] = $keyName;
-            $buffer['column_name'] = $tableIndex['column_name'];
+            $buffer['column_name'] = $this->getQuotedIdentifierName($tableIndex['column_name']);
             $indexBuffer[] = $buffer;
         }
 
@@ -100,7 +145,7 @@ class OracleSchemaManager extends AbstractSchemaManager
 
         $dbType = strtolower($tableColumn['data_type']);
         if (strpos($dbType, "timestamp(") === 0) {
-            if (strpos($dbType, "WITH TIME ZONE")) {
+            if (strpos($dbType, "with time zone")) {
                 $dbType = "timestamptz";
             } else {
                 $dbType = "timestamp";
@@ -195,7 +240,7 @@ class OracleSchemaManager extends AbstractSchemaManager
                 $length = null;
         }
 
-        $options = array(
+        $options = [
             'notnull'    => (bool) ($tableColumn['nullable'] === 'N'),
             'fixed'      => (bool) $fixed,
             'unsigned'   => (bool) $unsigned,
@@ -203,11 +248,12 @@ class OracleSchemaManager extends AbstractSchemaManager
             'length'     => $length,
             'precision'  => $precision,
             'scale'      => $scale,
-            'comment'       => (isset($tableColumn['comments'])) ? $tableColumn['comments'] : null,
-            'platformDetails' => array(),
-        );
+            'comment'    => isset($tableColumn['comments']) && '' !== $tableColumn['comments']
+                ? $tableColumn['comments']
+                : null,
+        ];
 
-        return new Column($tableColumn['column_name'], \Doctrine\DBAL\Types\Type::getType($type), $options);
+        return new Column($this->getQuotedIdentifierName($tableColumn['column_name']), Type::getType($type), $options);
     }
 
     /**
@@ -215,7 +261,7 @@ class OracleSchemaManager extends AbstractSchemaManager
      */
     protected function _getPortableTableForeignKeysList($tableForeignKeys)
     {
-        $list = array();
+        $list = [];
         foreach ($tableForeignKeys as $value) {
             $value = \array_change_key_case($value, CASE_LOWER);
             if (!isset($list[$value['constraint_name']])) {
@@ -223,24 +269,28 @@ class OracleSchemaManager extends AbstractSchemaManager
                     $value['delete_rule'] = null;
                 }
 
-                $list[$value['constraint_name']] = array(
-                    'name' => $value['constraint_name'],
-                    'local' => array(),
-                    'foreign' => array(),
+                $list[$value['constraint_name']] = [
+                    'name' => $this->getQuotedIdentifierName($value['constraint_name']),
+                    'local' => [],
+                    'foreign' => [],
                     'foreignTable' => $value['references_table'],
                     'onDelete' => $value['delete_rule'],
-                );
+                ];
             }
-            $list[$value['constraint_name']]['local'][$value['position']] = $value['local_column'];
-            $list[$value['constraint_name']]['foreign'][$value['position']] = $value['foreign_column'];
+
+            $localColumn = $this->getQuotedIdentifierName($value['local_column']);
+            $foreignColumn = $this->getQuotedIdentifierName($value['foreign_column']);
+
+            $list[$value['constraint_name']]['local'][$value['position']] = $localColumn;
+            $list[$value['constraint_name']]['foreign'][$value['position']] = $foreignColumn;
         }
 
-        $result = array();
+        $result = [];
         foreach ($list as $constraint) {
             $result[] = new ForeignKeyConstraint(
-                array_values($constraint['local']), $constraint['foreignTable'],
-                array_values($constraint['foreign']),  $constraint['name'],
-                array('onDelete' => $constraint['onDelete'])
+                array_values($constraint['local']), $this->getQuotedIdentifierName($constraint['foreignTable']),
+                array_values($constraint['foreign']), $this->getQuotedIdentifierName($constraint['name']),
+                ['onDelete' => $constraint['onDelete']]
             );
         }
 
@@ -254,7 +304,11 @@ class OracleSchemaManager extends AbstractSchemaManager
     {
         $sequence = \array_change_key_case($sequence, CASE_LOWER);
 
-        return new Sequence($sequence['sequence_name'], $sequence['increment_by'], $sequence['min_value']);
+        return new Sequence(
+            $this->getQuotedIdentifierName($sequence['sequence_name']),
+            (int) $sequence['increment_by'],
+            (int) $sequence['min_value']
+        );
     }
 
     /**
@@ -282,7 +336,7 @@ class OracleSchemaManager extends AbstractSchemaManager
      */
     public function createDatabase($database = null)
     {
-        if (is_null($database)) {
+        if ($database === null) {
             $database = $this->_conn->getDatabase();
         }
 
@@ -293,19 +347,19 @@ class OracleSchemaManager extends AbstractSchemaManager
         $query  = 'CREATE USER ' . $username . ' IDENTIFIED BY ' . $password;
         $this->_conn->executeUpdate($query);
 
-        $query = 'GRANT CREATE SESSION, CREATE TABLE, UNLIMITED TABLESPACE, CREATE SEQUENCE, CREATE TRIGGER TO ' . $username;
+        $query = 'GRANT DBA TO ' . $username;
         $this->_conn->executeUpdate($query);
-
-        return true;
     }
 
     /**
      * @param string $table
      *
-     * @return boolean
+     * @return bool
      */
     public function dropAutoincrement($table)
     {
+        assert($this->_platform instanceof OraclePlatform);
+
         $sql = $this->_platform->getDropAutoincrementSql($table);
         foreach ($sql as $query) {
             $this->_conn->executeUpdate($query);
@@ -322,5 +376,62 @@ class OracleSchemaManager extends AbstractSchemaManager
         $this->tryMethod('dropAutoincrement', $name);
 
         parent::dropTable($name);
+    }
+
+    /**
+     * Returns the quoted representation of the given identifier name.
+     *
+     * Quotes non-uppercase identifiers explicitly to preserve case
+     * and thus make references to the particular identifier work.
+     *
+     * @param string $identifier The identifier to quote.
+     *
+     * @return string The quoted identifier.
+     */
+    private function getQuotedIdentifierName($identifier)
+    {
+        if (preg_match('/[a-z]/', $identifier)) {
+            return $this->_platform->quoteIdentifier($identifier);
+        }
+
+        return $identifier;
+    }
+
+    /**
+     * Kills sessions connected with the given user.
+     *
+     * This is useful to force DROP USER operations which could fail because of active user sessions.
+     *
+     * @param string $user The name of the user to kill sessions for.
+     *
+     * @return void
+     */
+    private function killUserSessions($user)
+    {
+        $sql = <<<SQL
+SELECT
+    s.sid,
+    s.serial#
+FROM
+    gv\$session s,
+    gv\$process p
+WHERE
+    s.username = ?
+    AND p.addr(+) = s.paddr
+SQL;
+
+        $activeUserSessions = $this->_conn->fetchAll($sql, [strtoupper($user)]);
+
+        foreach ($activeUserSessions as $activeUserSession) {
+            $activeUserSession = array_change_key_case($activeUserSession, \CASE_LOWER);
+
+            $this->_execSql(
+                sprintf(
+                    "ALTER SYSTEM KILL SESSION '%s, %s' IMMEDIATE",
+                    $activeUserSession['sid'],
+                    $activeUserSession['serial#']
+                )
+            );
+        }
     }
 }

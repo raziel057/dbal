@@ -2,10 +2,12 @@
 
 namespace Doctrine\Tests\DBAL\Platforms;
 
+use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Comparator;
-use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Schema\TableDiff;
+use Doctrine\DBAL\TransactionIsolationLevel;
+use Doctrine\DBAL\Types\Type;
 
 abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCase
 {
@@ -52,7 +54,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $foreignKey = new \Doctrine\DBAL\Schema\ForeignKeyConstraint(
                 array('foreign_id'), 'my_table', array('id'), 'my_fk', array('onDelete' => 'CASCADE')
         );
-        $this->assertEquals(
+        self::assertEquals(
             "CONSTRAINT my_fk FOREIGN KEY (foreign_id) REFERENCES my_table (id) ON DELETE CASCADE NOT DEFERRABLE INITIALLY IMMEDIATE",
             $this->_platform->getForeignKeyDeclarationSQL($foreignKey)
         );
@@ -60,7 +62,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $foreignKey = new \Doctrine\DBAL\Schema\ForeignKeyConstraint(
             array('foreign_id'), 'my_table', array('id'), 'my_fk', array('match' => 'full')
         );
-        $this->assertEquals(
+        self::assertEquals(
             "CONSTRAINT my_fk FOREIGN KEY (foreign_id) REFERENCES my_table (id) MATCH full NOT DEFERRABLE INITIALLY IMMEDIATE",
             $this->_platform->getForeignKeyDeclarationSQL($foreignKey)
         );
@@ -68,7 +70,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $foreignKey = new \Doctrine\DBAL\Schema\ForeignKeyConstraint(
             array('foreign_id'), 'my_table', array('id'), 'my_fk', array('deferrable' => true)
         );
-        $this->assertEquals(
+        self::assertEquals(
             "CONSTRAINT my_fk FOREIGN KEY (foreign_id) REFERENCES my_table (id) DEFERRABLE INITIALLY IMMEDIATE",
             $this->_platform->getForeignKeyDeclarationSQL($foreignKey)
         );
@@ -76,7 +78,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $foreignKey = new \Doctrine\DBAL\Schema\ForeignKeyConstraint(
             array('foreign_id'), 'my_table', array('id'), 'my_fk', array('deferred' => true)
         );
-        $this->assertEquals(
+        self::assertEquals(
             "CONSTRAINT my_fk FOREIGN KEY (foreign_id) REFERENCES my_table (id) NOT DEFERRABLE INITIALLY DEFERRED",
             $this->_platform->getForeignKeyDeclarationSQL($foreignKey)
         );
@@ -84,7 +86,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $foreignKey = new \Doctrine\DBAL\Schema\ForeignKeyConstraint(
             array('foreign_id'), 'my_table', array('id'), 'my_fk', array('feferred' => true)
         );
-        $this->assertEquals(
+        self::assertEquals(
             "CONSTRAINT my_fk FOREIGN KEY (foreign_id) REFERENCES my_table (id) NOT DEFERRABLE INITIALLY DEFERRED",
             $this->_platform->getForeignKeyDeclarationSQL($foreignKey)
         );
@@ -92,7 +94,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $foreignKey = new \Doctrine\DBAL\Schema\ForeignKeyConstraint(
             array('foreign_id'), 'my_table', array('id'), 'my_fk', array('deferrable' => true, 'deferred' => true, 'match' => 'full')
         );
-        $this->assertEquals(
+        self::assertEquals(
             "CONSTRAINT my_fk FOREIGN KEY (foreign_id) REFERENCES my_table (id) MATCH full DEFERRABLE INITIALLY DEFERRED",
             $this->_platform->getForeignKeyDeclarationSQL($foreignKey)
         );
@@ -100,38 +102,38 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
 
     public function testGeneratesSqlSnippets()
     {
-        $this->assertEquals('SIMILAR TO', $this->_platform->getRegexpExpression(), 'Regular expression operator is not correct');
-        $this->assertEquals('"', $this->_platform->getIdentifierQuoteCharacter(), 'Identifier quote character is not correct');
-        $this->assertEquals('column1 || column2 || column3', $this->_platform->getConcatExpression('column1', 'column2', 'column3'), 'Concatenation expression is not correct');
-        $this->assertEquals('SUBSTRING(column FROM 5)', $this->_platform->getSubstringExpression('column', 5), 'Substring expression without length is not correct');
-        $this->assertEquals('SUBSTRING(column FROM 1 FOR 5)', $this->_platform->getSubstringExpression('column', 1, 5), 'Substring expression with length is not correct');
+        self::assertEquals('SIMILAR TO', $this->_platform->getRegexpExpression(), 'Regular expression operator is not correct');
+        self::assertEquals('"', $this->_platform->getIdentifierQuoteCharacter(), 'Identifier quote character is not correct');
+        self::assertEquals('column1 || column2 || column3', $this->_platform->getConcatExpression('column1', 'column2', 'column3'), 'Concatenation expression is not correct');
+        self::assertEquals('SUBSTRING(column FROM 5)', $this->_platform->getSubstringExpression('column', 5), 'Substring expression without length is not correct');
+        self::assertEquals('SUBSTRING(column FROM 1 FOR 5)', $this->_platform->getSubstringExpression('column', 1, 5), 'Substring expression with length is not correct');
     }
 
     public function testGeneratesTransactionCommands()
     {
-        $this->assertEquals(
+        self::assertEquals(
             'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ UNCOMMITTED',
-            $this->_platform->getSetTransactionIsolationSQL(\Doctrine\DBAL\Connection::TRANSACTION_READ_UNCOMMITTED)
+            $this->_platform->getSetTransactionIsolationSQL(TransactionIsolationLevel::READ_UNCOMMITTED)
         );
-        $this->assertEquals(
+        self::assertEquals(
             'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED',
-            $this->_platform->getSetTransactionIsolationSQL(\Doctrine\DBAL\Connection::TRANSACTION_READ_COMMITTED)
+            $this->_platform->getSetTransactionIsolationSQL(TransactionIsolationLevel::READ_COMMITTED)
         );
-        $this->assertEquals(
+        self::assertEquals(
             'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ',
-            $this->_platform->getSetTransactionIsolationSQL(\Doctrine\DBAL\Connection::TRANSACTION_REPEATABLE_READ)
+            $this->_platform->getSetTransactionIsolationSQL(TransactionIsolationLevel::REPEATABLE_READ)
         );
-        $this->assertEquals(
+        self::assertEquals(
             'SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE',
-            $this->_platform->getSetTransactionIsolationSQL(\Doctrine\DBAL\Connection::TRANSACTION_SERIALIZABLE)
+            $this->_platform->getSetTransactionIsolationSQL(TransactionIsolationLevel::SERIALIZABLE)
         );
     }
 
     public function testGeneratesDDLSnippets()
     {
-        $this->assertEquals('CREATE DATABASE foobar', $this->_platform->getCreateDatabaseSQL('foobar'));
-        $this->assertEquals('DROP DATABASE foobar', $this->_platform->getDropDatabaseSQL('foobar'));
-        $this->assertEquals('DROP TABLE foobar', $this->_platform->getDropTableSQL('foobar'));
+        self::assertEquals('CREATE DATABASE foobar', $this->_platform->getCreateDatabaseSQL('foobar'));
+        self::assertEquals('DROP DATABASE foobar', $this->_platform->getDropDatabaseSQL('foobar'));
+        self::assertEquals('DROP TABLE foobar', $this->_platform->getDropTableSQL('foobar'));
     }
 
     public function testGenerateTableWithAutoincrement()
@@ -140,20 +142,77 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         $column = $table->addColumn('id', 'integer');
         $column->setAutoincrement(true);
 
-        $this->assertEquals(array('CREATE TABLE autoinc_table (id SERIAL NOT NULL)'), $this->_platform->getCreateTableSQL($table));
+        self::assertEquals(array('CREATE TABLE autoinc_table (id SERIAL NOT NULL)'), $this->_platform->getCreateTableSQL($table));
+    }
+
+    public static function serialTypes() : array
+    {
+        return [
+            ['integer', 'SERIAL'],
+            ['bigint', 'BIGSERIAL'],
+        ];
+    }
+
+    /**
+     * @dataProvider serialTypes
+     * @group 2906
+     */
+    public function testGenerateTableWithAutoincrementDoesNotSetDefault(string $type, string $definition) : void
+    {
+        $table  = new \Doctrine\DBAL\Schema\Table('autoinc_table_notnull');
+        $column = $table->addColumn('id', $type);
+        $column->setAutoIncrement(true);
+        $column->setNotNull(false);
+
+        $sql = $this->_platform->getCreateTableSQL($table);
+
+        self::assertEquals(["CREATE TABLE autoinc_table_notnull (id $definition)"], $sql);
+    }
+
+    /**
+     * @dataProvider serialTypes
+     * @group 2906
+     */
+    public function testCreateTableWithAutoincrementAndNotNullAddsConstraint(string $type, string $definition) : void
+    {
+        $table  = new \Doctrine\DBAL\Schema\Table('autoinc_table_notnull_enabled');
+        $column = $table->addColumn('id', $type);
+        $column->setAutoIncrement(true);
+        $column->setNotNull(true);
+
+        $sql = $this->_platform->getCreateTableSQL($table);
+
+        self::assertEquals(["CREATE TABLE autoinc_table_notnull_enabled (id $definition NOT NULL)"], $sql);
+    }
+
+    /**
+     * @dataProvider serialTypes
+     * @group 2906
+     */
+    public function testGetDefaultValueDeclarationSQLIgnoresTheDefaultKeyWhenTheFieldIsSerial(string $type) : void
+    {
+        $sql = $this->_platform->getDefaultValueDeclarationSQL(
+            [
+                'autoincrement' => true,
+                'type'          => Type::getType($type),
+                'default'       => 1,
+            ]
+        );
+
+        self::assertSame('', $sql);
     }
 
     public function testGeneratesTypeDeclarationForIntegers()
     {
-        $this->assertEquals(
+        self::assertEquals(
             'INT',
             $this->_platform->getIntegerTypeDeclarationSQL(array())
         );
-        $this->assertEquals(
+        self::assertEquals(
             'SERIAL',
             $this->_platform->getIntegerTypeDeclarationSQL(array('autoincrement' => true)
         ));
-        $this->assertEquals(
+        self::assertEquals(
             'SERIAL',
             $this->_platform->getIntegerTypeDeclarationSQL(
                 array('autoincrement' => true, 'primary' => true)
@@ -162,17 +221,17 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
 
     public function testGeneratesTypeDeclarationForStrings()
     {
-        $this->assertEquals(
+        self::assertEquals(
             'CHAR(10)',
             $this->_platform->getVarcharTypeDeclarationSQL(
                 array('length' => 10, 'fixed' => true))
         );
-        $this->assertEquals(
+        self::assertEquals(
             'VARCHAR(50)',
             $this->_platform->getVarcharTypeDeclarationSQL(array('length' => 50)),
             'Variable string declaration is not correct'
         );
-        $this->assertEquals(
+        self::assertEquals(
             'VARCHAR(255)',
             $this->_platform->getVarcharTypeDeclarationSQL(array()),
             'Long string declaration is not correct'
@@ -187,15 +246,15 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
     public function testGeneratesSequenceSqlCommands()
     {
         $sequence = new \Doctrine\DBAL\Schema\Sequence('myseq', 20, 1);
-        $this->assertEquals(
+        self::assertEquals(
             'CREATE SEQUENCE myseq INCREMENT BY 20 MINVALUE 1 START 1',
             $this->_platform->getCreateSequenceSQL($sequence)
         );
-        $this->assertEquals(
+        self::assertEquals(
             'DROP SEQUENCE myseq CASCADE',
             $this->_platform->getDropSequenceSQL('myseq')
         );
-        $this->assertEquals(
+        self::assertEquals(
             "SELECT NEXTVAL('myseq')",
             $this->_platform->getSequenceNextValSQL('myseq')
         );
@@ -203,39 +262,47 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
 
     public function testDoesNotPreferIdentityColumns()
     {
-        $this->assertFalse($this->_platform->prefersIdentityColumns());
+        self::assertFalse($this->_platform->prefersIdentityColumns());
     }
 
     public function testPrefersSequences()
     {
-        $this->assertTrue($this->_platform->prefersSequences());
+        self::assertTrue($this->_platform->prefersSequences());
     }
 
     public function testSupportsIdentityColumns()
     {
-        $this->assertTrue($this->_platform->supportsIdentityColumns());
+        self::assertTrue($this->_platform->supportsIdentityColumns());
     }
 
     public function testSupportsSavePoints()
     {
-        $this->assertTrue($this->_platform->supportsSavepoints());
+        self::assertTrue($this->_platform->supportsSavepoints());
     }
 
     public function testSupportsSequences()
     {
-        $this->assertTrue($this->_platform->supportsSequences());
+        self::assertTrue($this->_platform->supportsSequences());
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function supportsCommentOnStatement()
+    {
+        return true;
     }
 
     public function testModifyLimitQuery()
     {
         $sql = $this->_platform->modifyLimitQuery('SELECT * FROM user', 10, 0);
-        $this->assertEquals('SELECT * FROM user LIMIT 10 OFFSET 0', $sql);
+        self::assertEquals('SELECT * FROM user LIMIT 10', $sql);
     }
 
     public function testModifyLimitQueryWithEmptyOffset()
     {
         $sql = $this->_platform->modifyLimitQuery('SELECT * FROM user', 10);
-        $this->assertEquals('SELECT * FROM user LIMIT 10', $sql);
+        self::assertEquals('SELECT * FROM user LIMIT 10', $sql);
     }
 
     public function getCreateTableColumnCommentsSQL()
@@ -279,6 +346,14 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         );
     }
 
+    protected function getQuotedNameInIndexSQL()
+    {
+        return array(
+            'CREATE TABLE test (column1 VARCHAR(255) NOT NULL)',
+            'CREATE INDEX "key" ON test (column1)',
+        );
+    }
+
     protected function getQuotedColumnInForeignKeySQL()
     {
         return array(
@@ -291,45 +366,101 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
 
     /**
      * @group DBAL-457
+     * @dataProvider pgBooleanProvider
+     *
+     * @param string $databaseValue
+     * @param string $preparedStatementValue
+     * @param int    $integerValue
+     * @param bool   $booleanValue
      */
-    public function testConvertBooleanAsStrings()
-    {
+    public function testConvertBooleanAsLiteralStrings(
+        $databaseValue,
+        $preparedStatementValue,
+        $integerValue,
+        $booleanValue
+    ) {
         $platform = $this->createPlatform();
 
-        $this->assertEquals('true', $platform->convertBooleans(true));
-        $this->assertEquals('false', $platform->convertBooleans(false));
+        self::assertEquals($preparedStatementValue, $platform->convertBooleans($databaseValue));
     }
 
     /**
      * @group DBAL-457
      */
-    public function testConvertBooleanAsIntegers()
+    public function testConvertBooleanAsLiteralIntegers()
     {
         $platform = $this->createPlatform();
         $platform->setUseBooleanTrueFalseStrings(false);
 
-        $this->assertEquals('1', $platform->convertBooleans(true));
-        $this->assertEquals('0', $platform->convertBooleans(false));
+        self::assertEquals(1, $platform->convertBooleans(true));
+        self::assertEquals(1, $platform->convertBooleans('1'));
+
+        self::assertEquals(0, $platform->convertBooleans(false));
+        self::assertEquals(0, $platform->convertBooleans('0'));
+    }
+
+    /**
+     * @group DBAL-630
+     * @dataProvider pgBooleanProvider
+     *
+     * @param string $databaseValue
+     * @param string $preparedStatementValue
+     * @param int    $integerValue
+     * @param bool   $booleanValue
+     */
+    public function testConvertBooleanAsDatabaseValueStrings(
+        $databaseValue,
+        $preparedStatementValue,
+        $integerValue,
+        $booleanValue
+    )
+    {
+        $platform = $this->createPlatform();
+
+        self::assertSame($integerValue, $platform->convertBooleansToDatabaseValue($booleanValue));
+    }
+
+    /**
+     * @group DBAL-630
+     */
+    public function testConvertBooleanAsDatabaseValueIntegers()
+    {
+        $platform = $this->createPlatform();
+        $platform->setUseBooleanTrueFalseStrings(false);
+
+        self::assertSame(1, $platform->convertBooleansToDatabaseValue(true));
+        self::assertSame(0, $platform->convertBooleansToDatabaseValue(false));
+    }
+
+    /**
+     * @dataProvider pgBooleanProvider
+     *
+     * @param string $databaseValue
+     * @param string $prepareStatementValue
+     * @param int    $integerValue
+     * @param bool   $booleanValue
+     */
+    public function testConvertFromBoolean($databaseValue, $prepareStatementValue, $integerValue, $booleanValue)
+    {
+        $platform = $this->createPlatform();
+
+        self::assertSame($booleanValue, $platform->convertFromBoolean($databaseValue));
+    }
+
+    /**
+     * @expectedException        UnexpectedValueException
+     * @expectedExceptionMessage Unrecognized boolean literal 'my-bool'
+     */
+    public function testThrowsExceptionWithInvalidBooleanLiteral()
+    {
+        $platform = $this->createPlatform()->convertBooleansToDatabaseValue("my-bool");
     }
 
     public function testGetCreateSchemaSQL()
     {
         $schemaName = 'schema';
         $sql = $this->_platform->getCreateSchemaSQL($schemaName);
-        $this->assertEquals('CREATE SCHEMA ' . $schemaName, $sql);
-    }
-
-    public function testSchemaNeedsCreation()
-    {
-        $schemaNames = array(
-            'default' => false,
-            'public' => false,
-            'schema' => true,
-        );
-        foreach ($schemaNames as $name => $expected) {
-            $actual = $this->_platform->schemaNeedsCreation($name);
-            $this->assertEquals($expected, $actual);
-        }
+        self::assertEquals('CREATE SCHEMA ' . $schemaName, $sql);
     }
 
     public function testAlterDecimalPrecisionScale()
@@ -377,7 +508,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
             'ALTER TABLE mytable ALTER dloo4 TYPE NUMERIC(16, 8)',
         );
 
-        $this->assertEquals($expectedSql, $sql);
+        self::assertEquals($expectedSql, $sql);
     }
 
     /**
@@ -404,7 +535,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
             'ALTER TABLE mytable DROP parent_id',
         );
 
-        $this->assertEquals($expectedSql, $sql);
+        self::assertEquals($expectedSql, $sql);
     }
 
     /**
@@ -412,7 +543,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
      */
     public function testUsesSequenceEmulatedIdentityColumns()
     {
-        $this->assertTrue($this->_platform->usesSequenceEmulatedIdentityColumns());
+        self::assertTrue($this->_platform->usesSequenceEmulatedIdentityColumns());
     }
 
     /**
@@ -420,7 +551,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
      */
     public function testReturnsIdentitySequenceName()
     {
-        $this->assertSame('mytable_mycolumn_seq', $this->_platform->getIdentitySequenceName('mytable', 'mycolumn'));
+        self::assertSame('mytable_mycolumn_seq', $this->_platform->getIdentitySequenceName('mytable', 'mycolumn'));
     }
 
     /**
@@ -430,7 +561,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
     public function testCreateSequenceWithCache($cacheSize, $expectedSql)
     {
         $sequence = new \Doctrine\DBAL\Schema\Sequence('foo', 1, 1, $cacheSize);
-        $this->assertContains($expectedSql, $this->_platform->getCreateSequenceSQL($sequence));
+        self::assertContains($expectedSql, $this->_platform->getCreateSequenceSQL($sequence));
     }
 
     public function dataCreateSequenceWithCache()
@@ -452,13 +583,13 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
 
     public function testReturnsBinaryTypeDeclarationSQL()
     {
-        $this->assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array()));
-        $this->assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('length' => 0)));
-        $this->assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('length' => 9999999)));
+        self::assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array()));
+        self::assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('length' => 0)));
+        self::assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('length' => 9999999)));
 
-        $this->assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('fixed' => true)));
-        $this->assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('fixed' => true, 'length' => 0)));
-        $this->assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('fixed' => true, 'length' => 9999999)));
+        self::assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('fixed' => true)));
+        self::assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('fixed' => true, 'length' => 0)));
+        self::assertSame('BYTEA', $this->_platform->getBinaryTypeDeclarationSQL(array('fixed' => true, 'length' => 9999999)));
     }
 
     public function testDoesNotPropagateUnnecessaryTableAlterationOnBinaryType()
@@ -478,7 +609,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         // VARBINARY -> BINARY
         // BINARY    -> VARBINARY
         // BLOB      -> VARBINARY
-        $this->assertEmpty($this->_platform->getAlterTableSQL($comparator->diffTable($table1, $table2)));
+        self::assertEmpty($this->_platform->getAlterTableSQL($comparator->diffTable($table1, $table2)));
 
         $table2 = new Table('mytable');
         $table2->addColumn('column_varbinary', 'binary', array('length' => 42));
@@ -488,7 +619,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         // VARBINARY -> VARBINARY with changed length
         // BINARY    -> BLOB
         // BLOB      -> BINARY
-        $this->assertEmpty($this->_platform->getAlterTableSQL($comparator->diffTable($table1, $table2)));
+        self::assertEmpty($this->_platform->getAlterTableSQL($comparator->diffTable($table1, $table2)));
 
         $table2 = new Table('mytable');
         $table2->addColumn('column_varbinary', 'blob');
@@ -498,7 +629,7 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         // VARBINARY -> BLOB
         // BINARY    -> BINARY with changed length
         // BLOB      -> BLOB
-        $this->assertEmpty($this->_platform->getAlterTableSQL($comparator->diffTable($table1, $table2)));
+        self::assertEmpty($this->_platform->getAlterTableSQL($comparator->diffTable($table1, $table2)));
     }
 
     /**
@@ -519,6 +650,331 @@ abstract class AbstractPostgreSqlPlatformTestCase extends AbstractPlatformTestCa
         return array(
             'ALTER INDEX "create" RENAME TO "select"',
             'ALTER INDEX "foo" RENAME TO "bar"',
+        );
+    }
+
+    /**
+     * PostgreSQL boolean strings provider
+     * @return array
+     */
+    public function pgBooleanProvider()
+    {
+        return array(
+            // Database value, prepared statement value, boolean integer value, boolean value.
+            array(true, 'true', 1, true),
+            array('t', 'true', 1, true),
+            array('true', 'true', 1, true),
+            array('y', 'true', 1, true),
+            array('yes', 'true', 1, true),
+            array('on', 'true', 1, true),
+            array('1', 'true', 1, true),
+
+            array(false, 'false', 0, false),
+            array('f', 'false', 0, false),
+            array('false', 'false', 0, false),
+            array( 'n', 'false', 0, false),
+            array('no', 'false', 0, false),
+            array('off', 'false', 0, false),
+            array('0', 'false', 0, false),
+
+            array(null, 'NULL', null, null)
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotedAlterTableRenameColumnSQL()
+    {
+        return array(
+            'ALTER TABLE mytable RENAME COLUMN unquoted1 TO unquoted',
+            'ALTER TABLE mytable RENAME COLUMN unquoted2 TO "where"',
+            'ALTER TABLE mytable RENAME COLUMN unquoted3 TO "foo"',
+            'ALTER TABLE mytable RENAME COLUMN "create" TO reserved_keyword',
+            'ALTER TABLE mytable RENAME COLUMN "table" TO "from"',
+            'ALTER TABLE mytable RENAME COLUMN "select" TO "bar"',
+            'ALTER TABLE mytable RENAME COLUMN quoted1 TO quoted',
+            'ALTER TABLE mytable RENAME COLUMN quoted2 TO "and"',
+            'ALTER TABLE mytable RENAME COLUMN quoted3 TO "baz"',
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotedAlterTableChangeColumnLengthSQL()
+    {
+        return array(
+            'ALTER TABLE mytable ALTER unquoted1 TYPE VARCHAR(255)',
+            'ALTER TABLE mytable ALTER unquoted2 TYPE VARCHAR(255)',
+            'ALTER TABLE mytable ALTER unquoted3 TYPE VARCHAR(255)',
+            'ALTER TABLE mytable ALTER "create" TYPE VARCHAR(255)',
+            'ALTER TABLE mytable ALTER "table" TYPE VARCHAR(255)',
+            'ALTER TABLE mytable ALTER "select" TYPE VARCHAR(255)',
+        );
+    }
+
+    /**
+     * @group DBAL-807
+     */
+    protected function getAlterTableRenameIndexInSchemaSQL()
+    {
+        return array(
+            'ALTER INDEX myschema.idx_foo RENAME TO idx_bar',
+        );
+    }
+
+    /**
+     * @group DBAL-807
+     */
+    protected function getQuotedAlterTableRenameIndexInSchemaSQL()
+    {
+        return array(
+            'ALTER INDEX "schema"."create" RENAME TO "select"',
+            'ALTER INDEX "schema"."foo" RENAME TO "bar"',
+        );
+    }
+
+    protected function getQuotesDropForeignKeySQL()
+    {
+        return 'ALTER TABLE "table" DROP CONSTRAINT "select"';
+    }
+
+    public function testGetNullCommentOnColumnSQL()
+    {
+        self::assertEquals(
+            "COMMENT ON COLUMN mytable.id IS NULL",
+            $this->_platform->getCommentOnColumnSQL('mytable', 'id', null)
+        );
+    }
+
+    /**
+     * @group DBAL-423
+     */
+    public function testReturnsGuidTypeDeclarationSQL()
+    {
+        self::assertSame('UUID', $this->_platform->getGuidTypeDeclarationSQL(array()));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getAlterTableRenameColumnSQL()
+    {
+        return array(
+            'ALTER TABLE foo RENAME COLUMN bar TO baz',
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotesTableIdentifiersInAlterTableSQL()
+    {
+        return array(
+            'ALTER TABLE "foo" DROP CONSTRAINT fk1',
+            'ALTER TABLE "foo" DROP CONSTRAINT fk2',
+            'ALTER TABLE "foo" ADD bloo INT NOT NULL',
+            'ALTER TABLE "foo" DROP baz',
+            'ALTER TABLE "foo" ALTER bar DROP NOT NULL',
+            'ALTER TABLE "foo" RENAME COLUMN id TO war',
+            'ALTER TABLE "foo" RENAME TO "table"',
+            'ALTER TABLE "table" ADD CONSTRAINT fk_add FOREIGN KEY (fk3) REFERENCES fk_table (id) NOT DEFERRABLE ' .
+            'INITIALLY IMMEDIATE',
+            'ALTER TABLE "table" ADD CONSTRAINT fk2 FOREIGN KEY (fk2) REFERENCES fk_table2 (id) NOT DEFERRABLE ' .
+            'INITIALLY IMMEDIATE',
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getCommentOnColumnSQL()
+    {
+        return array(
+            'COMMENT ON COLUMN foo.bar IS \'comment\'',
+            'COMMENT ON COLUMN "Foo"."BAR" IS \'comment\'',
+            'COMMENT ON COLUMN "select"."from" IS \'comment\'',
+        );
+    }
+
+    /**
+     * @group DBAL-1004
+     */
+    public function testAltersTableColumnCommentWithExplicitlyQuotedIdentifiers()
+    {
+        $table1 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'))));
+        $table2 = new Table('"foo"', array(new Column('"bar"', Type::getType('integer'), array('comment' => 'baz'))));
+
+        $comparator = new Comparator();
+
+        $tableDiff = $comparator->diffTable($table1, $table2);
+
+        self::assertInstanceOf('Doctrine\DBAL\Schema\TableDiff', $tableDiff);
+        self::assertSame(
+            array(
+                'COMMENT ON COLUMN "foo"."bar" IS \'baz\'',
+            ),
+            $this->_platform->getAlterTableSQL($tableDiff)
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotesReservedKeywordInUniqueConstraintDeclarationSQL()
+    {
+        return 'CONSTRAINT "select" UNIQUE (foo)';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotesReservedKeywordInIndexDeclarationSQL()
+    {
+        return 'INDEX "select" (foo)';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getQuotesReservedKeywordInTruncateTableSQL()
+    {
+        return 'TRUNCATE "select"';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getAlterStringToFixedStringSQL()
+    {
+        return array(
+            'ALTER TABLE mytable ALTER name TYPE CHAR(2)',
+        );
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getGeneratesAlterTableRenameIndexUsedByForeignKeySQL()
+    {
+        return array(
+            'ALTER INDEX idx_foo RENAME TO idx_foo_renamed',
+        );
+    }
+
+    /**
+     * @group DBAL-1142
+     */
+    public function testInitializesTsvectorTypeMapping()
+    {
+        self::assertTrue($this->_platform->hasDoctrineTypeMappingFor('tsvector'));
+        self::assertEquals('text', $this->_platform->getDoctrineTypeMapping('tsvector'));
+    }
+
+    /**
+     * @group DBAL-1220
+     */
+    public function testReturnsDisallowDatabaseConnectionsSQL()
+    {
+        self::assertSame(
+            "UPDATE pg_database SET datallowconn = 'false' WHERE datname = 'foo'",
+            $this->_platform->getDisallowDatabaseConnectionsSQL('foo')
+        );
+    }
+
+    /**
+     * @group DBAL-1220
+     */
+    public function testReturnsCloseActiveDatabaseConnectionsSQL()
+    {
+        self::assertSame(
+            "SELECT pg_terminate_backend(procpid) FROM pg_stat_activity WHERE datname = 'foo'",
+            $this->_platform->getCloseActiveDatabaseConnectionsSQL('foo')
+        );
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableForeignKeysSQL()
+    {
+        self::assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableForeignKeysSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesSchemaNameInListTableForeignKeysSQL()
+    {
+        self::assertContains(
+            "'Foo''Bar\\\\'",
+            $this->_platform->getListTableForeignKeysSQL("Foo'Bar\\.baz_table"),
+            '',
+            true
+        );
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableConstraintsSQL()
+    {
+        self::assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableConstraintsSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableIndexesSQL()
+    {
+        self::assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableIndexesSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesSchemaNameInListTableIndexesSQL()
+    {
+        self::assertContains(
+            "'Foo''Bar\\\\'",
+            $this->_platform->getListTableIndexesSQL("Foo'Bar\\.baz_table"),
+            '',
+            true
+        );
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesTableNameInListTableColumnsSQL()
+    {
+        self::assertContains("'Foo''Bar\\\\'", $this->_platform->getListTableColumnsSQL("Foo'Bar\\"), '', true);
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesSchemaNameInListTableColumnsSQL()
+    {
+        self::assertContains(
+            "'Foo''Bar\\\\'",
+            $this->_platform->getListTableColumnsSQL("Foo'Bar\\.baz_table"),
+            '',
+            true
+        );
+    }
+
+    /**
+     * @group DBAL-2436
+     */
+    public function testQuotesDatabaseNameInCloseActiveDatabaseConnectionsSQL()
+    {
+        self::assertContains(
+            "'Foo''Bar\\\\'",
+            $this->_platform->getCloseActiveDatabaseConnectionsSQL("Foo'Bar\\"),
+            '',
+            true
         );
     }
 }

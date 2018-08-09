@@ -19,7 +19,13 @@
 
 namespace Doctrine\DBAL\Driver\SQLAnywhere;
 
-use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Driver\AbstractDriverException;
+use function is_resource;
+use function sasql_error;
+use function sasql_errorcode;
+use function sasql_sqlstate;
+use function sasql_stmt_errno;
+use function sasql_stmt_error;
 
 /**
  * SAP Sybase SQL Anywhere driver exception.
@@ -28,7 +34,7 @@ use Doctrine\DBAL\DBALException;
  * @link   www.doctrine-project.org
  * @since  2.5
  */
-class SQLAnywhereException extends DBALException
+class SQLAnywhereException extends AbstractDriverException
 {
     /**
      * Helper method to turn SQL Anywhere error into exception.
@@ -42,11 +48,11 @@ class SQLAnywhereException extends DBALException
      */
     public static function fromSQLAnywhereError($conn = null, $stmt = null)
     {
-        if (null !== $conn && ! (is_resource($conn) && get_resource_type($conn) === 'SQLAnywhere connection')) {
+        if (null !== $conn && ! (is_resource($conn))) {
             throw new \InvalidArgumentException('Invalid SQL Anywhere connection resource given: ' . $conn);
         }
 
-        if (null !== $stmt && ! (is_resource($stmt) && get_resource_type($stmt) === 'SQLAnywhere statement')) {
+        if (null !== $stmt && ! (is_resource($stmt))) {
             throw new \InvalidArgumentException('Invalid SQL Anywhere statement resource given: ' . $stmt);
         }
 
@@ -86,9 +92,9 @@ class SQLAnywhereException extends DBALException
         }
 
         if ($message) {
-            return new self('SQLSTATE [' . $state . '] [' . $code . '] ' . $message, $code);
+            return new self('SQLSTATE [' . $state . '] [' . $code . '] ' . $message, $state, $code);
         }
 
-        return new self('SQL Anywhere error occurred but no error message was retrieved from driver.', $code);
+        return new self('SQL Anywhere error occurred but no error message was retrieved from driver.', $state, $code);
     }
 }

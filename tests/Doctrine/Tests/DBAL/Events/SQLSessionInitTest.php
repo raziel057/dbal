@@ -2,12 +2,10 @@
 
 namespace Doctrine\Tests\DBAL\Events;
 
-use Doctrine\Tests\DbalTestCase;
-use Doctrine\DBAL\Event\Listeners\SQLSessionInit;
 use Doctrine\DBAL\Event\ConnectionEventArgs;
+use Doctrine\DBAL\Event\Listeners\SQLSessionInit;
 use Doctrine\DBAL\Events;
-
-require_once __DIR__ . '/../../TestInit.php';
+use Doctrine\Tests\DbalTestCase;
 
 /**
  * @group DBAL-169
@@ -16,7 +14,7 @@ class SQLSessionInitTest extends DbalTestCase
 {
     public function testPostConnect()
     {
-        $connectionMock = $this->getMock('Doctrine\DBAL\Connection', array(), array(), '', false);
+        $connectionMock = $this->createMock('Doctrine\DBAL\Connection');
         $connectionMock->expects($this->once())
                        ->method('exec')
                        ->with($this->equalTo("SET SEARCH_PATH TO foo, public, TIMEZONE TO 'Europe/Berlin'"));
@@ -30,6 +28,6 @@ class SQLSessionInitTest extends DbalTestCase
     public function testGetSubscribedEvents()
     {
         $listener = new SQLSessionInit("SET SEARCH_PATH TO foo, public, TIMEZONE TO 'Europe/Berlin'");
-        $this->assertEquals(array(Events::postConnect), $listener->getSubscribedEvents());
+        self::assertEquals(array(Events::postConnect), $listener->getSubscribedEvents());
     }
 }

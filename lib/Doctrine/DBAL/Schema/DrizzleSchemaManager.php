@@ -19,6 +19,11 @@
 
 namespace Doctrine\DBAL\Schema;
 
+use Doctrine\DBAL\Types\Type;
+use function explode;
+use function strtolower;
+use function trim;
+
 /**
  * Schema manager for the Drizzle RDBMS.
  *
@@ -31,24 +36,31 @@ class DrizzleSchemaManager extends AbstractSchemaManager
      */
     protected function _getPortableTableColumnDefinition($tableColumn)
     {
-        $tableName = $tableColumn['COLUMN_NAME'];
         $dbType = strtolower($tableColumn['DATA_TYPE']);
 
         $type = $this->_platform->getDoctrineTypeMapping($dbType);
         $type = $this->extractDoctrineTypeFromComment($tableColumn['COLUMN_COMMENT'], $type);
         $tableColumn['COLUMN_COMMENT'] = $this->removeDoctrineTypeFromComment($tableColumn['COLUMN_COMMENT'], $type);
 
-        $options = array(
-            'notnull' => !(bool)$tableColumn['IS_NULLABLE'],
-            'length' => (int)$tableColumn['CHARACTER_MAXIMUM_LENGTH'],
-            'default' => isset($tableColumn['COLUMN_DEFAULT']) ? $tableColumn['COLUMN_DEFAULT'] : null,
-            'autoincrement' => (bool)$tableColumn['IS_AUTO_INCREMENT'],
-            'scale' => (int)$tableColumn['NUMERIC_SCALE'],
-            'precision' => (int)$tableColumn['NUMERIC_PRECISION'],
-            'comment' => (isset($tableColumn['COLUMN_COMMENT']) ? $tableColumn['COLUMN_COMMENT'] : null),
-        );
+        $options = [
+            'notnull' => !(bool) $tableColumn['IS_NULLABLE'],
+            'length' => (int) $tableColumn['CHARACTER_MAXIMUM_LENGTH'],
+            'default' => $tableColumn['COLUMN_DEFAULT'] ?? null,
+            'autoincrement' => (bool) $tableColumn['IS_AUTO_INCREMENT'],
+            'scale' => (int) $tableColumn['NUMERIC_SCALE'],
+            'precision' => (int) $tableColumn['NUMERIC_PRECISION'],
+            'comment' => isset($tableColumn['COLUMN_COMMENT']) && '' !== $tableColumn['COLUMN_COMMENT']
+                ? $tableColumn['COLUMN_COMMENT']
+                : null,
+        ];
 
-        return new Column($tableName, \Doctrine\DBAL\Types\Type::getType($type), $options);
+        $column = new Column($tableColumn['COLUMN_NAME'], Type::getType($type), $options);
+
+        if ( ! empty($tableColumn['COLLATION_NAME'])) {
+            $column->setPlatformOption('collation', $tableColumn['COLLATION_NAME']);
+        }
+
+        return $column;
     }
 
     /**
@@ -72,25 +84,25 @@ class DrizzleSchemaManager extends AbstractSchemaManager
      */
     public function _getPortableTableForeignKeyDefinition($tableForeignKey)
     {
-        $columns = array();
+        $columns = [];
         foreach (explode(',', $tableForeignKey['CONSTRAINT_COLUMNS']) as $value) {
             $columns[] = trim($value, ' `');
         }
 
-        $ref_columns = array();
+        $refColumns = [];
         foreach (explode(',', $tableForeignKey['REFERENCED_TABLE_COLUMNS']) as $value) {
-            $ref_columns[] = trim($value, ' `');
+            $refColumns[] = trim($value, ' `');
         }
 
         return new ForeignKeyConstraint(
             $columns,
             $tableForeignKey['REFERENCED_TABLE_NAME'],
-            $ref_columns,
+            $refColumns,
             $tableForeignKey['CONSTRAINT_NAME'],
-            array(
+            [
                 'onUpdate' => $tableForeignKey['UPDATE_RULE'],
                 'onDelete' => $tableForeignKey['DELETE_RULE'],
-            )
+            ]
         );
     }
 
@@ -99,9 +111,9 @@ class DrizzleSchemaManager extends AbstractSchemaManager
      */
     protected function _getPortableTableIndexesList($tableIndexes, $tableName = null)
     {
-        $indexes = array();
+        $indexes = [];
         foreach ($tableIndexes as $k) {
-            $k['primary'] = (boolean)$k['primary'];
+            $k['primary'] = (boolean) $k['primary'];
             $indexes[] = $k;
         }
 

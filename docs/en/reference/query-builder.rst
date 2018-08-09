@@ -36,11 +36,16 @@ input to any of the methods of the QueryBuilder and use the placeholder
     <?php
 
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u')
-        ->where('u.email = ?')
-        ->setParameter(1, $userInputEmail)
+        ->select('id', 'name')
+        ->from('users')
+        ->where('email = ?')
+        ->setParameter(0, $userInputEmail)
     ;
+
+.. note::
+
+    The numerical parameters in the QueryBuilder API start with the needle
+    ``0``, not with ``1`` as in the PDO API.
 
 Building a Query
 ----------------
@@ -56,8 +61,8 @@ For ``SELECT`` queries you start with invoking the ``select()`` method
     <?php
 
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u');
+        ->select('id', 'name')
+        ->from('users');
 
 For ``INSERT``, ``UPDATE`` and ``DELETE`` queries you can pass the
 table name into the ``insert($tableName)``, ``update($tableName)``
@@ -68,15 +73,15 @@ and ``delete($tableName)``:
     <?php
 
     $queryBuilder
-        ->insert('users', 'u')
+        ->insert('users')
     ;
 
     $queryBuilder
-        ->update('users', 'u')
+        ->update('users')
     ;
 
     $queryBuilder
-        ->delete('users', 'u')
+        ->delete('users')
     ;
 
 You can convert a query builder to its SQL string representation
@@ -93,14 +98,30 @@ clauses with the following API:
     <?php
 
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u')
-        ->where('u.email = ?')
+        ->select('id', 'name')
+        ->from('users')
+        ->where('email = ?')
     ;
 
 Calling ``where()`` overwrites the previous clause and you can prevent
 this by combining expressions with ``andWhere()`` and ``orWhere()`` methods.
 You can alternatively use expressions to generate the where clause.
+
+Table alias
+~~~~~~~~~~~
+
+The ``from()`` method takes an optional second parameter with which a table
+alias can be specified.
+
+.. code-block:: php
+
+    <?php
+
+    $queryBuilder
+        ->select('u.id', 'u.name')
+        ->from('users', 'u')
+        ->where('u.email = ?')
+    ;
 
 GROUP BY and HAVING Clause
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -115,20 +136,20 @@ previous expressions or ``addGroupBy()`` which adds to them:
 
     <?php
     $queryBuilder
-        ->select('DATE(u.last_login) as date', 'COUNT(u.id) AS users')
-        ->from('users', 'u')
-        ->groupBy('DATE(u.last_login)')
+        ->select('DATE(last_login) as date', 'COUNT(id) AS users')
+        ->from('users')
+        ->groupBy('DATE(last_login)')
         ->having('users > 10')
     ;
 
 Join Clauses
 ~~~~~~~~~~~~
 
-For ``SELECT`` clauses you can generate different types ofjoins: ``INNER``,
+For ``SELECT`` clauses you can generate different types of joins: ``INNER``,
 ``LEFT`` and ``RIGHT``. The ``RIGHT`` join is not portable across all platforms
 (Sqlite for example does not support it).
 
-A join always belongs to one part of the from clause. This is why you have
+A join always belongs to one part of the from clause. This is why you have to
 specify the alias of the ``FROM`` part the join belongs to as the first
 argument.
 
@@ -158,10 +179,10 @@ user input and accepts SQL expressions.
 
     <?php
     $queryBuilder
-        ->select('u.id', 'u.name', 'p.number')
-        ->from('users', 'u')
-        ->orderBy('u.username', 'ASC')
-        ->addOrderBy('u.last_login', 'ASC NULLS FIRST')
+        ->select('id', 'name')
+        ->from('users')
+        ->orderBy('username', 'ASC')
+        ->addOrderBy('last_login', 'ASC NULLS FIRST')
     ;
 
 Use the ``addOrderBy`` method to add instead of replace the ``orderBy`` clause.
@@ -179,8 +200,8 @@ returned.
 
     <?php
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u')
+        ->select('id', 'name')
+        ->from('users')
         ->setFirstResult(10)
         ->setMaxResults(20);
 
@@ -202,8 +223,8 @@ done with the ``values()`` method on the query builder:
                 'password' => '?'
             )
         )
-        ->setParameter(1, $username)
-        ->setParameter(2, $password)
+        ->setParameter(0, $username)
+        ->setParameter(1, $password)
     ;
     // INSERT INTO users (name, password) VALUES (?, ?)
 
@@ -219,8 +240,8 @@ Setting single values instead of all at once is also possible with the
         ->insert('users')
         ->setValue('name', '?')
         ->setValue('password', '?')
-        ->setParameter(1, $username)
-        ->setParameter(2, $password)
+        ->setParameter(0, $username)
+        ->setParameter(1, $password)
     ;
     // INSERT INTO users (name, password) VALUES (?, ?)
 
@@ -237,14 +258,14 @@ Of course you can also use both methods in combination:
                 'name' => '?'
             )
         )
-        ->setParameter(1, $username)
+        ->setParameter(0, $username)
     ;
     // INSERT INTO users (name) VALUES (?)
 
     if ($password) {
         $queryBuilder
             ->setValue('password', '?')
-            ->setParameter(2, $password)
+            ->setParameter(1, $password)
         ;
         // INSERT INTO users (name, password) VALUES (?, ?)
     }
@@ -276,7 +297,7 @@ user-input:
         ->update('users', 'u')
         ->set('u.logins', 'u.logins + 1')
         ->set('u.last_login', '?')
-        ->setParameter(1, $userInputLastLogin)
+        ->setParameter(0, $userInputLastLogin)
     ;
 
 Building Expressions
@@ -293,19 +314,19 @@ Most notably you can use expressions to build nested And-/Or statements:
     <?php
 
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u')
+        ->select('id', 'name')
+        ->from('users')
         ->where(
             $queryBuilder->expr()->andX(
-                $queryBuilder->expr()->eq('u.username', '?'),
-                $queryBuilder->expr()->eq('u.email', '?')
+                $queryBuilder->expr()->eq('username', '?'),
+                $queryBuilder->expr()->eq('email', '?')
             )
         );
 
 The ``andX()`` and ``orX()`` methods accept an arbitrary amount
 of arguments and can be nested in each other.
 
-There is a bunch of methods to create comparisions and other SQL snippets
+There is a bunch of methods to create comparisons and other SQL snippets
 on the Expression object that you can see on the API documentation.
 
 Binding Parameters to Placeholders
@@ -321,15 +342,15 @@ in your query as a return value:
     <?php
 
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u')
-        ->where('u.email = ' .  $queryBuilder->createNamedParameter($userInputEmail))
+        ->select('id', 'name')
+        ->from('users')
+        ->where('email = ' .  $queryBuilder->createNamedParameter($userInputEmail))
     ;
-    // SELECT u.id, u.name FROM users u WHERE u.email = :dcValue1
+    // SELECT id, name FROM users WHERE email = :dcValue1
 
     $queryBuilder
-        ->select('u.id', 'u.name')
-        ->from('users', 'u')
-        ->where('u.email = ' .  $queryBuilder->createPositionalParameter($userInputEmail))
+        ->select('id', 'name')
+        ->from('users')
+        ->where('email = ' .  $queryBuilder->createPositionalParameter($userInputEmail))
     ;
-    // SELECT u.id, u.name FROM users u WHERE u.email = ?
+    // SELECT id, name FROM users WHERE email = ?

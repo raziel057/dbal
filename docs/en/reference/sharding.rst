@@ -3,7 +3,7 @@ Sharding
 
 .. note::
 
-    The sharding extension is currently in transition from a seperate Project
+    The sharding extension is currently in transition from a separate Project
     into DBAL. Class names may differ.
 
 Starting with 2.3 Doctrine DBAL contains some functionality to simplify the
@@ -100,11 +100,15 @@ platforms:
 
     <?php
     use Doctrine\DBAL\DriverManager;
+    use Ramsey\Uuid\Uuid;
 
     $conn = DriverManager::getConnection(/**..**/);
-    $guid = $conn->fetchColumn('SELECT ' . $conn->getDatabasePlatform()->getGuidExpression());
+    $guid = Uuid::uuid1();
 
-    $conn->insert("my_table", array("id" => $guid, "foo" => "bar"));
+    $conn->insert('my_table', [
+        'id'  => $guid->toString(),
+        'foo' => 'bar',
+    ]);
 
 In your application you should hide this details in Id-Generation services:
 
@@ -113,15 +117,13 @@ In your application you should hide this details in Id-Generation services:
     <?php
     namespace MyApplication;
 
+    use Ramsey\Uuid\Uuid;
+
     class IdGenerationService
     {
-        private $conn;
-
-        public function generateCustomerId()
+        public function generateCustomerId() : Uuid
         {
-            return $this->conn->fetchColumn('SELECT ' .
-                $this->conn->getDatabasePlatform()->getGuidExpression()
-            );
+            return Uuid::uuid1();
         }
     }
 
@@ -268,7 +270,6 @@ you have to sort the data in the application.
     <?php
     $sql = "SELECT * FROM customers";
     $rows = $shardManager->queryAll($sql, $params);
-
 
 Schema Operations: SchemaSynchronizer Interface
 -----------------------------------------------
@@ -453,14 +454,14 @@ See the configuration for a sample sharding connection:
     use Doctrine\DBAL\DriverManager;
 
     $conn = DriverManager::getConnection(array(
-        'wrapperClass' => 'Doctrine\Shards\DBAL\PoolingShardConnection',
+        'wrapperClass' => 'Doctrine\DBAL\Sharding\PoolingShardConnection',
         'driver'       => 'pdo_sqlite',
         'global'       => array('memory' => true),
         'shards'       => array(
             array('id' => 1, 'memory' => true),
             array('id' => 2, 'memory' => true),
         ),
-        'shardChoser' => 'Doctrine\Shards\DBAL\ShardChoser\MultiTenantShardChoser',
+        'shardChoser' => 'Doctrine\DBAL\Sharding\ShardChoser\MultiTenantShardChoser',
     ));
 
 You have to configure the following options:

@@ -19,34 +19,51 @@
 
 namespace Doctrine\DBAL\Driver\PDOPgSql;
 
-use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver\AbstractPostgreSQLDriver;
 use Doctrine\DBAL\Driver\PDOConnection;
-use Doctrine\DBAL\Platforms\PostgreSqlPlatform;
 use Doctrine\DBAL\DBALException;
-use Doctrine\DBAL\Schema\PostgreSqlSchemaManager;
 use PDOException;
-use Doctrine\DBAL\Driver\ExceptionConverterDriver;
+use PDO;
+use function defined;
 
 /**
  * Driver that connects through pdo_pgsql.
  *
  * @since 2.0
  */
-class Driver implements \Doctrine\DBAL\Driver, ExceptionConverterDriver
+class Driver extends AbstractPostgreSQLDriver
 {
     /**
      * {@inheritdoc}
      */
-    public function connect(array $params, $username = null, $password = null, array $driverOptions = array())
+    public function connect(array $params, $username = null, $password = null, array $driverOptions = [])
     {
         try {
-            return new PDOConnection(
+            $pdo = new PDOConnection(
                 $this->_constructPdoDsn($params),
                 $username,
                 $password,
                 $driverOptions
             );
-        } catch(PDOException $e) {
+
+            if (defined('PDO::PGSQL_ATTR_DISABLE_PREPARES')
+                && (! isset($driverOptions[PDO::PGSQL_ATTR_DISABLE_PREPARES])
+                    || true === $driverOptions[PDO::PGSQL_ATTR_DISABLE_PREPARES]
+                )
+            ) {
+                $pdo->setAttribute(PDO::PGSQL_ATTR_DISABLE_PREPARES, true);
+            }
+
+            /* defining client_encoding via SET NAMES to avoid inconsistent DSN support
+             * - the 'client_encoding' connection param only works with postgres >= 9.1
+             * - passing client_encoding via the 'options' param breaks pgbouncer support
+             */
+            if (isset($params['charset'])) {
+                $pdo->exec('SET NAMES \'' . $params['charset'] . '\'');
+            }
+
+            return $pdo;
+        } catch (PDOException $e) {
             throw DBALException::driverException($this, $e);
         }
     }
@@ -63,23 +80,46 @@ class Driver implements \Doctrine\DBAL\Driver, ExceptionConverterDriver
         $dsn = 'pgsql:';
 
         if (isset($params['host']) && $params['host'] != '') {
-            $dsn .= 'host=' . $params['host'] . ' ';
+            $dsn .= 'host=' . $params['host'] . ';';
         }
 
         if (isset($params['port']) && $params['port'] != '') {
-            $dsn .= 'port=' . $params['port'] . ' ';
+            $dsn .= 'port=' . $params['port'] . ';';
         }
 
         if (isset($params['dbname'])) {
-            $dsn .= 'dbname=' . $params['dbname'] . ' ';
-        }
-
-        if (isset($params['charset'])) {
-            $dsn .= "options='--client_encoding=" . $params['charset'] . "'";
+            $dsn .= 'dbname=' . $params['dbname'] . ';';
+        } elseif (isset($params['default_dbname'])) {
+            $dsn .= 'dbname=' . $params['default_dbname'] . ';';
+        } else {
+            // Used for temporary connections to allow operations like dropping the database currently connected to.
+            // Connecting without an explicit database does not work, therefore "postgres" database is used
+            // as it is mostly present in every server setup.
+            $dsn .= 'dbname=postgres' . ';';
         }
 
         if (isset($params['sslmode'])) {
-            $dsn .= 'sslmode=' . $params['sslmode'] . ' ';
+            $dsn .= 'sslmode=' . $params['sslmode'] . ';';
+        }
+
+        if (isset($params['sslrootcert'])) {
+            $dsn .= 'sslrootcert=' . $params['sslrootcert'] . ';';
+        }
+
+        if (isset($params['sslcert'])) {
+            $dsn .= 'sslcert=' . $params['sslcert'] . ';';
+        }
+
+        if (isset($params['sslkey'])) {
+            $dsn .= 'sslkey=' . $params['sslkey'] . ';';
+        }
+
+        if (isset($params['sslcrl'])) {
+            $dsn .= 'sslcrl=' . $params['sslcrl'] . ';';
+        }
+
+        if (isset($params['application_name'])) {
+            $dsn .= 'application_name=' . $params['application_name'] . ';';
         }
 
         return $dsn;
@@ -88,81 +128,8 @@ class Driver implements \Doctrine\DBAL\Driver, ExceptionConverterDriver
     /**
      * {@inheritdoc}
      */
-    public function getDatabasePlatform()
-    {
-        return new PostgreSqlPlatform();
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getSchemaManager(Connection $conn)
-    {
-        return new PostgreSqlSchemaManager($conn);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     public function getName()
     {
         return 'pdo_pgsql';
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getDatabase(Connection $conn)
-    {
-        $params = $conn->getParams();
-
-        return (isset($params['dbname']))
-            ? $params['dbname']
-            : $conn->query('SELECT CURRENT_DATABASE()')->fetchColumn();
-    }
-
-    /**
-     * {@inheritdoc}
-     *
-     * @link http://www.postgresql.org/docs/9.3/static/errcodes-appendix.html
-     */
-    public function convertExceptionCode(\Exception $exception)
-    {
-        switch ($exception->getCode()) {
-            case '23502':
-                return DBALException::ERROR_NOT_NULL;
-
-            case '23503':
-                return DBALException::ERROR_FOREIGN_KEY_CONSTRAINT;
-
-            case '23505':
-                return DBALException::ERROR_DUPLICATE_KEY;
-
-            case '42601':
-                return DBALException::ERROR_SYNTAX;
-
-            case '42702':
-                return DBALException::ERROR_NON_UNIQUE_FIELD_NAME;
-
-            case '42703':
-                return DBALException::ERROR_BAD_FIELD_NAME;
-
-            case '42P01':
-                return DBALException::ERROR_UNKNOWN_TABLE;
-
-            case '42P07':
-                return DBALException::ERROR_TABLE_ALREADY_EXISTS;
-
-            case '7':
-                // In some case (mainly connection errors) the PDO exception does not provide a SQLSTATE via its code.
-                // The exception code is always set to 7 here.
-                // We have to match against the SQLSTATE in the error message in these cases.
-                if (strpos($exception->getMessage(), 'SQLSTATE[08006]') !== false) {
-                    return DBALException::ERROR_ACCESS_DENIED;
-                }
-                break;
-        }
-
-        return 0;
     }
 }

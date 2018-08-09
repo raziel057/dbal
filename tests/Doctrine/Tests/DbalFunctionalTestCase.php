@@ -1,6 +1,16 @@
 <?php
 
 namespace Doctrine\Tests;
+use const PHP_EOL;
+use function array_map;
+use function array_reverse;
+use function count;
+use function get_class;
+use function implode;
+use function is_object;
+use function is_scalar;
+use function strpos;
+use function var_export;
 
 class DbalFunctionalTestCase extends DbalTestCase
 {
@@ -40,24 +50,39 @@ class DbalFunctionalTestCase extends DbalTestCase
         $this->_conn->getConfiguration()->setSQLLogger($this->_sqlLoggerStack);
     }
 
-    protected function onNotSuccessfulTest(\Exception $e)
+    protected function tearDown()
     {
-        if ($e instanceof \PHPUnit_Framework_AssertionFailedError) {
-            throw $e;
+        while ($this->_conn->isTransactionActive()) {
+            $this->_conn->rollBack();
+        }
+    }
+
+    protected function onNotSuccessfulTest(\Throwable $t)
+    {
+        if ($t instanceof \PHPUnit\Framework\AssertionFailedError) {
+            throw $t;
         }
 
         if(isset($this->_sqlLoggerStack->queries) && count($this->_sqlLoggerStack->queries)) {
             $queries = "";
             $i = count($this->_sqlLoggerStack->queries);
-            foreach (array_reverse($this->_sqlLoggerStack->queries) AS $query) {
-                $params = array_map(function($p) { if (is_object($p)) return get_class($p); else return "'".$p."'"; }, $query['params'] ?: array());
-                $queries .= ($i+1).". SQL: '".$query['sql']."' Params: ".implode(", ", $params).PHP_EOL;
+            foreach (array_reverse($this->_sqlLoggerStack->queries) as $query) {
+                $params = array_map(function($p) {
+                    if (is_object($p)) {
+                        return get_class($p);
+                    } elseif (is_scalar($p)) {
+                        return "'".$p."'";
+                    }
+
+                    return var_export($p, true);
+                }, $query['params'] ?: array());
+                $queries .= $i.". SQL: '".$query['sql']."' Params: ".implode(", ", $params).PHP_EOL;
                 $i--;
             }
 
-            $trace = $e->getTrace();
+            $trace = $t->getTrace();
             $traceMsg = "";
-            foreach($trace AS $part) {
+            foreach($trace as $part) {
                 if(isset($part['file'])) {
                     if(strpos($part['file'], "PHPUnit/") !== false) {
                         // Beginning with PHPUnit files we don't print the trace anymore.
@@ -68,10 +93,10 @@ class DbalFunctionalTestCase extends DbalTestCase
                 }
             }
 
-            $message = "[".get_class($e)."] ".$e->getMessage().PHP_EOL.PHP_EOL."With queries:".PHP_EOL.$queries.PHP_EOL."Trace:".PHP_EOL.$traceMsg;
+            $message = "[".get_class($t)."] ".$t->getMessage().PHP_EOL.PHP_EOL."With queries:".PHP_EOL.$queries.PHP_EOL."Trace:".PHP_EOL.$traceMsg;
 
-            throw new \Exception($message, (int)$e->getCode(), $e);
+            throw new \Exception($message, (int) $t->getCode(), $t);
         }
-        throw $e;
+        throw $t;
     }
 }

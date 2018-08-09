@@ -1,18 +1,18 @@
 <?php
 
 namespace Doctrine\Tests\DBAL\Functional;
-
-use Doctrine\DBAL\Types\Type;
-use Doctrine\DBAL\Connection;
-use PDO;
-
-require_once __DIR__ . '/../../TestInit.php';
+use const CASE_LOWER;
+use function array_change_key_case;
+use function count;
 
 class ModifyLimitQueryTest extends \Doctrine\Tests\DbalFunctionalTestCase
 {
+    /**
+     * @var bool
+     */
     private static $tableCreated = false;
 
-    public function setUp()
+    protected function setUp()
     {
         parent::setUp();
 
@@ -48,6 +48,7 @@ class ModifyLimitQueryTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $this->assertLimitResult(array(1, 2, 3, 4), $sql, 10, 0);
         $this->assertLimitResult(array(1, 2), $sql, 2, 0);
         $this->assertLimitResult(array(3, 4), $sql, 2, 2);
+        $this->assertLimitResult(array(2, 3, 4), $sql, null, 1);
     }
 
     public function testModifyLimitQueryJoinQuery()
@@ -102,11 +103,69 @@ class ModifyLimitQueryTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $this->assertLimitResult(array(2), $sql, 1, 1);
     }
 
+    public function testModifyLimitQuerySubSelect()
+    {
+        $this->_conn->insert('modify_limit_table', array('test_int' => 1));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 2));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 3));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 4));
+
+        $sql = "SELECT modify_limit_table.*, (SELECT COUNT(*) FROM modify_limit_table) AS cnt FROM modify_limit_table ORDER BY test_int DESC";
+
+        $this->assertLimitResult(array(4, 3, 2, 1), $sql, 10, 0);
+        $this->assertLimitResult(array(4, 3), $sql, 2, 0);
+        $this->assertLimitResult(array(2, 1), $sql, 2, 2);
+    }
+
+    public function testModifyLimitQueryFromSubSelect()
+    {
+        $this->_conn->insert('modify_limit_table', array('test_int' => 1));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 2));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 3));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 4));
+
+        $sql = "SELECT * FROM (SELECT * FROM modify_limit_table) sub ORDER BY test_int DESC";
+
+        $this->assertLimitResult(array(4, 3, 2, 1), $sql, 10, 0);
+        $this->assertLimitResult(array(4, 3), $sql, 2, 0);
+        $this->assertLimitResult(array(2, 1), $sql, 2, 2);
+    }
+
+    public function testModifyLimitQueryLineBreaks()
+    {
+        $this->_conn->insert('modify_limit_table', array('test_int' => 1));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 2));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 3));
+
+        $sql = <<<SQL
+SELECT
+*
+FROM
+modify_limit_table
+ORDER
+BY
+test_int
+ASC
+SQL;
+
+        $this->assertLimitResult(array(2), $sql, 1, 1);
+    }
+
+    public function testModifyLimitQueryZeroOffsetNoLimit()
+    {
+        $this->_conn->insert('modify_limit_table', array('test_int' => 1));
+        $this->_conn->insert('modify_limit_table', array('test_int' => 2));
+
+        $sql = "SELECT test_int FROM modify_limit_table ORDER BY test_int ASC";
+
+        $this->assertLimitResult(array(1, 2), $sql, null, 0);
+    }
+
     public function assertLimitResult($expectedResults, $sql, $limit, $offset, $deterministic = true)
     {
         $p = $this->_conn->getDatabasePlatform();
         $data = array();
-        foreach ($this->_conn->fetchAll($p->modifyLimitQuery($sql, $limit, $offset)) AS $row) {
+        foreach ($this->_conn->fetchAll($p->modifyLimitQuery($sql, $limit, $offset)) as $row) {
             $row = array_change_key_case($row, CASE_LOWER);
             $data[] = $row['test_int'];
         }
@@ -115,9 +174,9 @@ class ModifyLimitQueryTest extends \Doctrine\Tests\DbalFunctionalTestCase
          * Do not assert the order of results when results are non-deterministic
          */
         if ($deterministic) {
-            $this->assertEquals($expectedResults, $data);
+            self::assertEquals($expectedResults, $data);
         } else {
-            $this->assertCount(count($expectedResults), $data);
+            self::assertCount(count($expectedResults), $data);
         }
     }
 }

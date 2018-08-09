@@ -3,14 +3,16 @@
 namespace Doctrine\Tests\DBAL\Functional;
 
 use Doctrine\DBAL\Types\Type;
-
-require_once __DIR__ . '/../../TestInit.php';
+use function str_repeat;
 
 class TypeConversionTest extends \Doctrine\Tests\DbalFunctionalTestCase
 {
+    /**
+     * @var int
+     */
     static private $typeCounter = 0;
 
-    public function setUp()
+    protected function setUp()
     {
         parent::setUp();
 
@@ -36,15 +38,13 @@ class TypeConversionTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $table->setPrimaryKey(array('id'));
 
         try {
-            foreach ($this->_conn->getDatabasePlatform()->getCreateTableSQL($table) AS $sql) {
-                $this->_conn->executeQuery($sql);
-            }
+            $this->_conn->getSchemaManager()->createTable($table);
         } catch(\Exception $e) {
 
         }
     }
 
-    static public function dataIdempotentDataConversion()
+    public static function dataIdempotentDataConversion()
     {
         $obj = new \stdClass();
         $obj->foo = "bar";
@@ -59,7 +59,7 @@ class TypeConversionTest extends \Doctrine\Tests\DbalFunctionalTestCase
             array('datetime',   new \DateTime('2010-04-05 10:10:10'), 'DateTime'),
             array('datetimetz', new \DateTime('2010-04-05 10:10:10'), 'DateTime'),
             array('date',       new \DateTime('2010-04-05'), 'DateTime'),
-            array('time',       new \DateTime('10:10:10'), 'DateTime'),
+            array('time',       new \DateTime('1970-01-01 10:10:10'), 'DateTime'),
             array('text',       str_repeat('foo ', 1000), 'string'),
             array('array',      array('foo' => 'bar'), 'array'),
             array('json_array', array('foo' => 'bar'), 'array'),
@@ -72,7 +72,7 @@ class TypeConversionTest extends \Doctrine\Tests\DbalFunctionalTestCase
     /**
      * @dataProvider dataIdempotentDataConversion
      * @param string $type
-     * @param mixed $originalValue
+     * @param mixed  $originalValue
      * @param string $expectedPhpType
      */
     public function testIdempotentDataConversion($type, $originalValue, $expectedPhpType)
@@ -87,16 +87,16 @@ class TypeConversionTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $actualDbValue = $typeInstance->convertToPHPValue($this->_conn->fetchColumn($sql), $this->_conn->getDatabasePlatform());
 
         if ($originalValue instanceof \DateTime) {
-            $this->assertInstanceOf($expectedPhpType, $actualDbValue, "The expected type from the conversion to and back from the database should be " . $expectedPhpType);
+            self::assertInstanceOf($expectedPhpType, $actualDbValue, "The expected type from the conversion to and back from the database should be " . $expectedPhpType);
         } else {
-            $this->assertInternalType($expectedPhpType, $actualDbValue, "The expected type from the conversion to and back from the database should be " . $expectedPhpType);
+            self::assertInternalType($expectedPhpType, $actualDbValue, "The expected type from the conversion to and back from the database should be " . $expectedPhpType);
         }
 
         if ($type !== "datetimetz") {
-            $this->assertEquals($originalValue, $actualDbValue, "Conversion between values should produce the same out as in value, but doesnt!");
+            self::assertEquals($originalValue, $actualDbValue, "Conversion between values should produce the same out as in value, but doesnt!");
 
             if ($originalValue instanceof \DateTime) {
-                $this->assertEquals($originalValue->getTimezone()->getName(), $actualDbValue->getTimezone()->getName(), "Timezones should be the same.");
+                self::assertEquals($originalValue->getTimezone()->getName(), $actualDbValue->getTimezone()->getName(), "Timezones should be the same.");
             }
         }
     }

@@ -2,39 +2,36 @@
 
 namespace Doctrine\Tests\DBAL\Schema;
 
-require_once __DIR__ . '/../../TestInit.php';
-
-use Doctrine\DBAL\Schema\Schema;
-use Doctrine\DBAL\Schema\Table;
+use Doctrine\DBAL\Exception\InvalidArgumentException;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Types\Type;
 
-class ColumnTest extends \PHPUnit_Framework_TestCase
+class ColumnTest extends \PHPUnit\Framework\TestCase
 {
     public function testGet()
     {
         $column = $this->createColumn();
 
-        $this->assertEquals("foo", $column->getName());
-        $this->assertSame(Type::getType('string'), $column->getType());
+        self::assertEquals("foo", $column->getName());
+        self::assertSame(Type::getType('string'), $column->getType());
 
-        $this->assertEquals(200, $column->getLength());
-        $this->assertEquals(5, $column->getPrecision());
-        $this->assertEquals(2, $column->getScale());
-        $this->assertTrue($column->getUnsigned());
-        $this->assertFalse($column->getNotNull());
-        $this->assertTrue($column->getFixed());
-        $this->assertEquals("baz", $column->getDefault());
+        self::assertEquals(200, $column->getLength());
+        self::assertEquals(5, $column->getPrecision());
+        self::assertEquals(2, $column->getScale());
+        self::assertTrue($column->getUnsigned());
+        self::assertFalse($column->getNotNull());
+        self::assertTrue($column->getFixed());
+        self::assertEquals("baz", $column->getDefault());
 
-        $this->assertEquals(array('foo' => 'bar'), $column->getPlatformOptions());
-        $this->assertTrue($column->hasPlatformOption('foo'));
-        $this->assertEquals('bar', $column->getPlatformOption('foo'));
-        $this->assertFalse($column->hasPlatformOption('bar'));
+        self::assertEquals(array('foo' => 'bar'), $column->getPlatformOptions());
+        self::assertTrue($column->hasPlatformOption('foo'));
+        self::assertEquals('bar', $column->getPlatformOption('foo'));
+        self::assertFalse($column->hasPlatformOption('bar'));
 
-        $this->assertEquals(array('bar' => 'baz'), $column->getCustomSchemaOptions());
-        $this->assertTrue($column->hasCustomSchemaOption('bar'));
-        $this->assertEquals('baz', $column->getCustomSchemaOption('bar'));
-        $this->assertFalse($column->hasCustomSchemaOption('foo'));
+        self::assertEquals(array('bar' => 'baz'), $column->getCustomSchemaOptions());
+        self::assertTrue($column->hasCustomSchemaOption('bar'));
+        self::assertEquals('baz', $column->getCustomSchemaOption('bar'));
+        self::assertFalse($column->hasCustomSchemaOption('foo'));
     }
 
     public function testToArray()
@@ -56,7 +53,29 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
             'bar' => 'baz'
         );
 
-        $this->assertEquals($expected, $this->createColumn()->toArray());
+        self::assertEquals($expected, $this->createColumn()->toArray());
+    }
+
+    /**
+     * @group legacy
+     * @expectedDeprecation The "unknown_option" column option is not supported, setting it is deprecated and will cause an error in Doctrine 3.0
+     */
+    public function testSettingUnknownOptionIsStillSupported() : void
+    {
+        new Column('foo', $this->createMock(Type::class), ['unknown_option' => 'bar']);
+    }
+
+    /**
+     * @group legacy
+     * @expectedDeprecation The "unknown_option" column option is not supported, setting it is deprecated and will cause an error in Doctrine 3.0
+     */
+    public function testOptionsShouldNotBeIgnored() : void
+    {
+        $col1 = new Column('bar', Type::getType(Type::INTEGER), ['unknown_option' => 'bar', 'notnull' => true]);
+        self::assertTrue($col1->getNotnull());
+
+        $col2 = new Column('bar', Type::getType(Type::INTEGER), ['unknown_option' => 'bar', 'notnull' => false]);
+        self::assertFalse($col2->getNotnull());
     }
 
     /**
@@ -82,6 +101,7 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
 
     /**
      * @group DBAL-64
+     * @group DBAL-830
      */
     public function testQuotedColumnName()
     {
@@ -91,9 +111,38 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
         $mysqlPlatform = new \Doctrine\DBAL\Platforms\MySqlPlatform();
         $sqlitePlatform = new \Doctrine\DBAL\Platforms\SqlitePlatform();
 
-        $this->assertEquals('bar', $column->getName());
-        $this->assertEquals('`bar`', $column->getQuotedName($mysqlPlatform));
-        $this->assertEquals('"bar"', $column->getQuotedName($sqlitePlatform));
+        self::assertEquals('bar', $column->getName());
+        self::assertEquals('`bar`', $column->getQuotedName($mysqlPlatform));
+        self::assertEquals('"bar"', $column->getQuotedName($sqlitePlatform));
+
+        $column = new Column("[bar]", $string);
+
+        $sqlServerPlatform = new \Doctrine\DBAL\Platforms\SQLServerPlatform();
+
+        self::assertEquals('bar', $column->getName());
+        self::assertEquals('[bar]', $column->getQuotedName($sqlServerPlatform));
+    }
+
+    /**
+     * @dataProvider getIsQuoted
+     * @group DBAL-830
+     */
+    public function testIsQuoted($columnName, $isQuoted)
+    {
+        $type = Type::getType('string');
+        $column = new Column($columnName, $type);
+
+        self::assertSame($isQuoted, $column->isQuoted());
+    }
+
+    public function getIsQuoted()
+    {
+        return array(
+            array('bar', false),
+            array('`bar`', true),
+            array('"bar"', true),
+            array('[bar]', true),
+        );
     }
 
     /**
@@ -102,13 +151,13 @@ class ColumnTest extends \PHPUnit_Framework_TestCase
     public function testColumnComment()
     {
         $column = new Column("bar", Type::getType('string'));
-        $this->assertNull($column->getComment());
+        self::assertNull($column->getComment());
 
         $column->setComment("foo");
-        $this->assertEquals("foo", $column->getComment());
+        self::assertEquals("foo", $column->getComment());
 
         $columnArray = $column->toArray();
-        $this->assertArrayHasKey('comment', $columnArray);
-        $this->assertEquals('foo', $columnArray['comment']);
+        self::assertArrayHasKey('comment', $columnArray);
+        self::assertEquals('foo', $columnArray['comment']);
     }
 }

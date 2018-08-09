@@ -19,6 +19,8 @@
 
 namespace Doctrine\DBAL\Schema;
 
+use function in_array;
+
 /**
  * Represents the change of a column.
  *
@@ -34,27 +36,27 @@ class ColumnDiff
     public $oldColumnName;
 
     /**
-     * @var \Doctrine\DBAL\Schema\Column
+     * @var Column
      */
     public $column;
 
     /**
      * @var array
      */
-    public $changedProperties = array();
+    public $changedProperties = [];
 
     /**
-     * @var \Doctrine\DBAL\Schema\Column
+     * @var Column
      */
     public $fromColumn;
 
     /**
-     * @param string                       $oldColumnName
-     * @param \Doctrine\DBAL\Schema\Column $column
-     * @param array                        $changedProperties
-     * @param \Doctrine\DBAL\Schema\Column $fromColumn
+     * @param string   $oldColumnName
+     * @param Column   $column
+     * @param string[] $changedProperties
+     * @param Column   $fromColumn
      */
-    public function __construct($oldColumnName, Column $column, array $changedProperties = array(), Column $fromColumn = null)
+    public function __construct($oldColumnName, Column $column, array $changedProperties = [], Column $fromColumn = null)
     {
         $this->oldColumnName = $oldColumnName;
         $this->column = $column;
@@ -65,7 +67,7 @@ class ColumnDiff
     /**
      * @param string $propertyName
      *
-     * @return boolean
+     * @return bool
      */
     public function hasChanged($propertyName)
     {
@@ -73,10 +75,12 @@ class ColumnDiff
     }
 
     /**
-     * @return \Doctrine\DBAL\Schema\Identifier
+     * @return Identifier
      */
     public function getOldColumnName()
     {
-        return new Identifier($this->oldColumnName);
+        $quote = $this->fromColumn && $this->fromColumn->isQuoted();
+
+        return new Identifier($this->oldColumnName, $quote);
     }
 }

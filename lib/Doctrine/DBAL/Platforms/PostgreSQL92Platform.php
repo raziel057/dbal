@@ -19,6 +19,8 @@
 
 namespace Doctrine\DBAL\Platforms;
 
+use Doctrine\DBAL\Types\Type;
+
 /**
  * Provides the behavior, features and SQL dialect of the PostgreSQL 9.2 database platform.
  *
@@ -26,7 +28,7 @@ namespace Doctrine\DBAL\Platforms;
  * @link   www.doctrine-project.org
  * @since  2.5
  */
-class PostgreSQL92Platform extends PostgreSqlPlatform
+class PostgreSQL92Platform extends PostgreSQL91Platform
 {
     /**
      * {@inheritdoc}
@@ -34,6 +36,18 @@ class PostgreSQL92Platform extends PostgreSqlPlatform
     public function getJsonTypeDeclarationSQL(array $field)
     {
         return 'JSON';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getSmallIntTypeDeclarationSQL(array $field)
+    {
+        if ( ! empty($field['autoincrement'])) {
+            return 'SMALLSERIAL';
+        }
+
+        return parent::getSmallIntTypeDeclarationSQL($field);
     }
 
     /**
@@ -49,7 +63,7 @@ class PostgreSQL92Platform extends PostgreSqlPlatform
      */
     protected function getReservedKeywordsClass()
     {
-        return 'Doctrine\DBAL\Platforms\Keywords\PostgreSQL92Keywords';
+        return Keywords\PostgreSQL92Keywords::class;
     }
 
     /**
@@ -58,6 +72,17 @@ class PostgreSQL92Platform extends PostgreSqlPlatform
     protected function initializeDoctrineTypeMappings()
     {
         parent::initializeDoctrineTypeMappings();
-        $this->doctrineTypeMapping['json'] = 'json_array';
+
+        $this->doctrineTypeMapping['json'] = Type::JSON;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getCloseActiveDatabaseConnectionsSQL($database)
+    {
+        $database = $this->quoteStringLiteral($database);
+
+        return "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $database";
     }
 }

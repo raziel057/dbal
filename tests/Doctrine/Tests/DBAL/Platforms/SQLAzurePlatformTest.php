@@ -9,9 +9,12 @@ use Doctrine\Tests\DbalTestCase;
  */
 class SQLAzurePlatformTest extends DbalTestCase
 {
+    /**
+     * @var \Doctrine\DBAL\Platforms\SQLAzurePlatform
+     */
     private $platform;
 
-    public function setUp()
+    protected function setUp()
     {
         $this->platform = new \Doctrine\DBAL\Platforms\SQLAzurePlatform();
     }
@@ -23,7 +26,6 @@ class SQLAzurePlatformTest extends DbalTestCase
         $table->addOption('azure.federatedOnDistributionName', 'TblId');
         $table->addOption('azure.federatedOnColumnName', 'id');
 
-        $this->assertEquals(array('CREATE TABLE tbl (id INT NOT NULL) FEDERATED ON (TblId = id)'), $this->platform->getCreateTableSQL($table));
+        self::assertEquals(array('CREATE TABLE tbl (id INT NOT NULL) FEDERATED ON (TblId = id)'), $this->platform->getCreateTableSQL($table));
     }
 }
-

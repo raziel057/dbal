@@ -19,7 +19,7 @@ to prevent them.
 SQL Injection: Safe and Unsafe APIs for User Input
 --------------------------------------------------
 
-A database library naturally falls touches the class of SQL injection security
+A database library naturally touches the class of SQL injection security
 vulnerabilities. You should read the following information carefully to
 understand how Doctrine can and cannot help you to prevent SQL injection.
 
@@ -28,9 +28,11 @@ There are however some exceptions.
 
 The following APIs are designed to be **SAFE** from SQL injections:
 
-- ``Doctrine\DBAL\Connection#insert($table, $values, $types)``
-- ``Doctrine\DBAL\Connection#update($table, $values, $where, $types)``
-- ``Doctrine\DBAL\Connection#delete($table, $where, $types)``
+- For ``Doctrine\DBAL\Connection#insert($table, $values, $types)``,
+  ``Doctrine\DBAL\Connection#update($table, $values, $where, $types)`` and
+  ``Doctrine\DBAL\Connection#delete($table, $where, $types)`` only the array
+  values of ``$values`` and ``$where``. The table name and keys of ``$values``
+  and ``$where`` are NOT escaped.
 - ``Doctrine\DBAL\Query\QueryBuilder#setFirstResult($offset)``
 - ``Doctrine\DBAL\Query\QueryBuilder#setMaxResults($limit)``
 - ``Doctrine\DBAL\Platforms\AbstractPlatform#modifyLimitQuery($sql, $limit, $offset)`` for the ``$limit`` and ``$offset`` parameters.
@@ -41,11 +43,13 @@ Consider **ALL** other APIs to be not safe for user-input:
 - The QueryBuilder API
 - The Platforms and SchemaManager APIs to generate and execute DML/DDL SQL statements
 
+To escape user input in those scenarios use the ``Connection#quote()`` method.
+
 User input in your queries
 --------------------------
 
-A database application necessarily requires user-input to passed to your queries.
-There are wrong and right ways to do this and is very important to be very strict about this:
+A database application necessarily requires user-input to be passed to your queries.
+There are wrong and right ways to do this and it is very important to be very strict about this:
 
 Wrong: String Concatenation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,14 +65,16 @@ SQL or DQL query. For Example:
 
 An attacker could inject any value into the GET variable "username" to modify the query to his needs.
 
-Although DQL is a wrapper around SQL that can prevent you from some security implications, the previous
-example is also a thread to DQL queries.
+Although DQL is a wrapper around SQL that can prevent some security implications, the previous
+example is also a threat to DQL queries.
+
+.. code-block:: php
 
     <?php
     // DQL is not safe against arbitrary user-input as well:
     $dql = "SELECT u FROM User u WHERE u.username = '" . $_GET['username'] . "'";
 
-In this scenario an attacker could still pass a username set to "' OR 1 = 1" and create a valid DQL query.
+In this scenario an attacker could still pass a username set to ``' OR 1 = 1`` and create a valid DQL query.
 Although DQL will make use of quoting functions when literals are used in a DQL statement, allowing
 the attacker to modify the DQL statement with valid literals cannot be detected by the DQL parser, it
 is your responsibility.
@@ -77,11 +83,11 @@ Right: Prepared Statements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You should always use prepared statements to execute your queries. Prepared statements is a two-step
-procedure, separating SQL query from the parameters. They are supported (and encouraged) for both
+procedure, separating the SQL query from the parameters. They are supported (and encouraged) for both
 DBAL SQL queries and for ORM DQL queries.
 
 Instead of using string concatenation to insert user-input into your SQL/DQL statements you just specify
-either placeholders instead and then explain to the database driver which variable should be bound to
+placeholders and then explain to the database driver which variable should be bound to
 which placeholder. Each database vendor supports different placeholder styles:
 
 -  All PDO Drivers support positional (using question marks) and named placeholders (:param1, :foo, :bar).
@@ -120,7 +126,7 @@ Following are examples of using prepared statements with SQL and DQL:
     $data = $query->getResult();
 
 You can see this is a bit more tedious to write, but this is the only way to write secure queries. If you
-are using just the DBAL there are also helper methods which simplify the usage quite alot:
+are using just the DBAL there are also helper methods which simplify the usage quite a lot:
 
 .. code-block:: php
 
@@ -131,7 +137,7 @@ are using just the DBAL there are also helper methods which simplify the usage q
 
 There is also ``executeUpdate`` which does not return a statement but the number of affected rows.
 
-Besides binding parameters you can also pass the type of the variable. This allows Doctrine or the underyling
+Besides binding parameters you can also pass the type of the variable. This allows Doctrine or the underlying
 vendor to not only escape but also cast the value to the correct type. See the docs on querying and DQL in the
 respective chapters for more information.
 
@@ -145,24 +151,7 @@ the ``Connection#quote`` method:
 
     <?php
     // Parameter quoting
-    $sql = "SELECT * FROM users WHERE name = " . $connection->quote($_GET['username'], \PDO::PARAM_STR);
+    $sql = "SELECT * FROM users WHERE name = " . $connection->quote($_GET['username']);
 
-This method is only available for SQL, not for DQL. For DQL it is always encouraged to use prepared
+This method is only available for SQL, not for DQL. For DQL you are always encouraged to use prepared
 statements not only for security, but also for caching reasons.
-
-Non-ASCII compatible Charsets in MySQL
---------------------------------------
-
-Up until PHP 5.3.6 PDO has a security problem when using non ascii compatible charsets. Even if specifying
-the charset using "SET NAMES", emulated prepared statements and ``PDO#quote`` could not reliably escape
-values, opening up to potential SQL injections. If you are running PHP 5.3.6 you can solve this issue
-by passing the driver option "charset" to Doctrine PDO MySQL driver. Using SET NAMES does not suffice!
-
-.. code-block::
-
-    <?php    
-    $conn = DriverManager::getConnection(array(
-        'driver' => 'pdo_mysql',
-        'charset' => 'UTF8',
-    ));
-

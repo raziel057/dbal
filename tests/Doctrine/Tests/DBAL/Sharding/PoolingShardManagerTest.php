@@ -20,16 +20,19 @@ namespace Doctrine\Tests\DBAL\Sharding;
 
 use Doctrine\DBAL\Sharding\PoolingShardManager;
 
-class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
+class PoolingShardManagerTest extends \PHPUnit\Framework\TestCase
 {
     private function createConnectionMock()
     {
-        return $this->getMock('Doctrine\DBAL\Sharding\PoolingShardConnection', array('connect', 'getParams', 'fetchAll'), array(), '', false);
+        return $this->getMockBuilder('Doctrine\DBAL\Sharding\PoolingShardConnection')
+            ->setMethods(array('connect', 'getParams', 'fetchAll'))
+            ->disableOriginalConstructor()
+            ->getMock();
     }
 
     private function createPassthroughShardChoser()
     {
-        $mock = $this->getMock('Doctrine\DBAL\Sharding\ShardChoser\ShardChoser');
+        $mock = $this->createMock('Doctrine\DBAL\Sharding\ShardChoser\ShardChoser');
         $mock->expects($this->any())
              ->method('pickShard')
              ->will($this->returnCallback(function($value) { return $value; }));
@@ -38,7 +41,7 @@ class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
 
     private function createStaticShardChoser()
     {
-        $mock = $this->getMock('Doctrine\DBAL\Sharding\ShardChoser\ShardChoser');
+        $mock = $this->createMock('Doctrine\DBAL\Sharding\ShardChoser\ShardChoser');
         $mock->expects($this->any())
             ->method('pickShard')
             ->will($this->returnCallback(function($value) { return 1; }));
@@ -50,10 +53,10 @@ class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
         $conn = $this->createConnectionMock();
         $conn->expects($this->once())->method('connect')->with($this->equalTo(0));
 
-        $shardManager = new PoolingShardManager($conn, $this->createPassthroughShardChoser());
+        $shardManager = new PoolingShardManager($conn);
         $shardManager->selectGlobal();
 
-        $this->assertNull($shardManager->getCurrentDistributionValue());
+        self::assertNull($shardManager->getCurrentDistributionValue());
     }
 
     public function testSelectShard()
@@ -66,7 +69,7 @@ class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
         $shardManager = new PoolingShardManager($conn);
         $shardManager->selectShard($shardId);
 
-        $this->assertEquals($shardId, $shardManager->getCurrentDistributionValue());
+        self::assertEquals($shardId, $shardManager->getCurrentDistributionValue());
     }
 
     public function testGetShards()
@@ -78,10 +81,10 @@ class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
             )
         );
 
-        $shardManager = new PoolingShardManager($conn, $this->createPassthroughShardChoser());
+        $shardManager = new PoolingShardManager($conn);
         $shards = $shardManager->getShards();
 
-        $this->assertEquals(array(array('id' => 1), array('id' => 2)), $shards);
+        self::assertEquals(array(array('id' => 1), array('id' => 2)), $shards);
     }
 
     public function testQueryAll()
@@ -108,10 +111,10 @@ class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
              ->with($this->equalTo($sql), $this->equalTo($params), $this->equalTo($types))
              ->will($this->returnValue(array( array('id' => 2) ) ));
 
-        $shardManager = new PoolingShardManager($conn, $this->createPassthroughShardChoser());
+        $shardManager = new PoolingShardManager($conn);
         $result = $shardManager->queryAll($sql, $params, $types);
 
-        $this->assertEquals(array(array('id' => 1), array('id' => 2)), $result);
+        self::assertEquals(array(array('id' => 1), array('id' => 2)), $result);
     }
 
     public function testQueryAllWithStaticShardChoser()
@@ -138,10 +141,9 @@ class PoolingShardManagerTest extends \PHPUnit_Framework_TestCase
             ->with($this->equalTo($sql), $this->equalTo($params), $this->equalTo($types))
             ->will($this->returnValue(array( array('id' => 2) ) ));
 
-        $shardManager = new PoolingShardManager($conn, $this->createStaticShardChoser());
+        $shardManager = new PoolingShardManager($conn);
         $result = $shardManager->queryAll($sql, $params, $types);
 
-        $this->assertEquals(array(array('id' => 1), array('id' => 2)), $result);
+        self::assertEquals(array(array('id' => 1), array('id' => 2)), $result);
     }
 }
-

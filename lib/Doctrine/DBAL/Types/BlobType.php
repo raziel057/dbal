@@ -19,7 +19,13 @@
 
 namespace Doctrine\DBAL\Types;
 
+use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use function fopen;
+use function fseek;
+use function fwrite;
+use function is_resource;
+use function is_string;
 
 /**
  * Type that maps an SQL BLOB to a PHP resource stream.
@@ -46,7 +52,10 @@ class BlobType extends Type
         }
 
         if (is_string($value)) {
-            $value = fopen('data://text/plain;base64,' . base64_encode($value), 'r');
+            $fp = fopen('php://temp', 'rb+');
+            fwrite($fp, $value);
+            fseek($fp, 0);
+            $value = $fp;
         }
 
         if ( ! is_resource($value)) {
@@ -69,6 +78,6 @@ class BlobType extends Type
      */
     public function getBindingType()
     {
-        return \PDO::PARAM_LOB;
+        return ParameterType::LARGE_OBJECT;
     }
 }

@@ -19,6 +19,7 @@
 
 namespace Doctrine\DBAL\Types;
 
+use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 
 /**
@@ -41,7 +42,7 @@ class BooleanType extends Type
      */
     public function convertToDatabaseValue($value, AbstractPlatform $platform)
     {
-        return $platform->convertBooleans($value);
+        return $platform->convertBooleansToDatabaseValue($value);
     }
 
     /**
@@ -49,7 +50,7 @@ class BooleanType extends Type
      */
     public function convertToPHPValue($value, AbstractPlatform $platform)
     {
-        return (null === $value) ? null : (bool) $value;
+        return $platform->convertFromBoolean($value);
     }
 
     /**
@@ -65,6 +66,6 @@ class BooleanType extends Type
      */
     public function getBindingType()
     {
-        return \PDO::PARAM_BOOL;
+        return ParameterType::BOOLEAN;
     }
 }

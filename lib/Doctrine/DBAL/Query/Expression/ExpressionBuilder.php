@@ -20,6 +20,11 @@
 namespace Doctrine\DBAL\Query\Expression;
 
 use Doctrine\DBAL\Connection;
+use function func_get_arg;
+use function func_get_args;
+use function func_num_args;
+use function implode;
+use function sprintf;
 
 /**
  * ExpressionBuilder class is responsible to dynamically create SQL query parts.
@@ -254,48 +259,50 @@ class ExpressionBuilder
      *
      * @return string
      */
-    public function like($x, $y)
+    public function like($x, $y/*, ?string $escapeChar = null */)
     {
-        return $this->comparison($x, 'LIKE', $y);
+        return $this->comparison($x, 'LIKE', $y) .
+            (func_num_args() >= 3 ? sprintf(' ESCAPE %s', func_get_arg(2)) : '');
     }
 
     /**
      * Creates a NOT LIKE() comparison expression with the given arguments.
      *
      * @param string $x Field in string format to be inspected by NOT LIKE() comparison.
-     * @param mixed $y Argument to be used in NOT LIKE() comparison.
+     * @param mixed  $y Argument to be used in NOT LIKE() comparison.
      *
      * @return string
      */
-    public function notLike($x, $y)
+    public function notLike($x, $y/*, ?string $escapeChar = null */)
     {
-        return $this->comparison($x, 'NOT LIKE', $y);
+        return $this->comparison($x, 'NOT LIKE', $y) .
+            (func_num_args() >= 3 ? sprintf(' ESCAPE %s', func_get_arg(2)) : '');
     }
 
     /**
      * Creates a IN () comparison expression with the given arguments.
      *
-     * @param string $x The field in string format to be inspected by IN() comparison.
-     * @param array  $y The array of values to be used by IN() comparison.
+     * @param string       $x The field in string format to be inspected by IN() comparison.
+     * @param string|array $y The placeholder or the array of values to be used by IN() comparison.
      *
      * @return string
      */
-    public function in($x, array $y)
+    public function in($x, $y)
     {
-        return $this->comparison($x, 'IN', '('.implode(', ', $y).')');
+        return $this->comparison($x, 'IN', '('.implode(', ', (array) $y).')');
     }
 
     /**
      * Creates a NOT IN () comparison expression with the given arguments.
      *
-     * @param string $x The field in string format to be inspected by NOT IN() comparison.
-     * @param array $y  The array of values to be used by NOT IN() comparison.
+     * @param string       $x The field in string format to be inspected by NOT IN() comparison.
+     * @param string|array $y The placeholder or the array of values to be used by NOT IN() comparison.
      *
      * @return string
      */
-    public function notIn($x, array $y)
+    public function notIn($x, $y)
     {
-        return $this->comparison($x, 'NOT IN', '('.implode(', ', $y).')');
+        return $this->comparison($x, 'NOT IN', '('.implode(', ', (array) $y).')');
     }
 
     /**

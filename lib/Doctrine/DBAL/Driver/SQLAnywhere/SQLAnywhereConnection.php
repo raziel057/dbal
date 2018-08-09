@@ -20,6 +20,25 @@
 namespace Doctrine\DBAL\Driver\SQLAnywhere;
 
 use Doctrine\DBAL\Driver\Connection;
+use Doctrine\DBAL\Driver\ServerInfoAwareConnection;
+use Doctrine\DBAL\ParameterType;
+use function assert;
+use function func_get_args;
+use function is_float;
+use function is_int;
+use function is_resource;
+use function is_string;
+use function sasql_affected_rows;
+use function sasql_commit;
+use function sasql_connect;
+use function sasql_error;
+use function sasql_errorcode;
+use function sasql_escape_string;
+use function sasql_insert_id;
+use function sasql_pconnect;
+use function sasql_real_query;
+use function sasql_rollback;
+use function sasql_set_option;
 
 /**
  * SAP Sybase SQL Anywhere implementation of the Connection interface.
@@ -28,7 +47,7 @@ use Doctrine\DBAL\Driver\Connection;
  * @link   www.doctrine-project.org
  * @since  2.5
  */
-class SQLAnywhereConnection implements Connection
+class SQLAnywhereConnection implements Connection, ServerInfoAwareConnection
 {
     /**
      * @var resource The SQL Anywhere connection resource.
@@ -40,8 +59,8 @@ class SQLAnywhereConnection implements Connection
      *
      * Connects to database with given connection string.
      *
-     * @param string  $dsn        The connection string.
-     * @param boolean $persistent Whether or not to establish a persistent connection.
+     * @param string $dsn        The connection string.
+     * @param bool   $persistent Whether or not to establish a persistent connection.
      *
      * @throws SQLAnywhereException
      */
@@ -49,7 +68,7 @@ class SQLAnywhereConnection implements Connection
     {
         $this->connection = $persistent ? @sasql_pconnect($dsn) : @sasql_connect($dsn);
 
-        if ( ! is_resource($this->connection) || get_resource_type($this->connection) !== 'SQLAnywhere connection') {
+        if ( ! is_resource($this->connection)) {
             throw SQLAnywhereException::fromSQLAnywhereError();
         }
 
@@ -120,11 +139,23 @@ class SQLAnywhereConnection implements Connection
      */
     public function exec($statement)
     {
-        $stmt = $this->prepare($statement);
+        if (false === sasql_real_query($this->connection, $statement)) {
+            throw SQLAnywhereException::fromSQLAnywhereError($this->connection);
+        }
 
-        $stmt->execute();
+        return sasql_affected_rows($this->connection);
+    }
 
-        return $stmt->rowCount();
+    /**
+     * {@inheritdoc}
+     */
+    public function getServerVersion()
+    {
+        $version = $this->query("SELECT PROPERTY('ProductVersion')")->fetchColumn();
+
+        assert(is_string($version));
+
+        return $version;
     }
 
     /**
@@ -163,13 +194,21 @@ class SQLAnywhereConnection implements Connection
     /**
      * {@inheritdoc}
      */
-    public function quote($input, $type = \PDO::PARAM_STR)
+    public function quote($input, $type = ParameterType::STRING)
     {
         if (is_int($input) || is_float($input)) {
             return $input;
         }
 
         return "'" . sasql_escape_string($this->connection, $input) . "'";
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function requiresQueryForServerVersion()
+    {
+        return true;
     }
 
     /**
@@ -193,7 +232,7 @@ class SQLAnywhereConnection implements Connection
      *
      * @throws SQLAnywhereException
      *
-     * @return boolean Whether or not ending transactional mode succeeded.
+     * @return bool Whether or not ending transactional mode succeeded.
      */
     private function endTransaction()
     {

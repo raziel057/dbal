@@ -19,22 +19,21 @@
 
 namespace Doctrine\DBAL;
 
+use Doctrine\DBAL\Exception;
+use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Driver\ExceptionConverterDriver;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use function array_map;
+use function bin2hex;
+use function implode;
+use function is_resource;
+use function is_string;
+use function json_encode;
+use function sprintf;
+use function str_split;
 
 class DBALException extends \Exception
 {
-    const ERROR_DUPLICATE_KEY = 1;
-    const ERROR_UNKNOWN_TABLE = 2;
-    const ERROR_TABLE_ALREADY_EXISTS = 3;
-    const ERROR_FOREIGN_KEY_CONSTRAINT = 4;
-    const ERROR_NOT_NULL = 5;
-    const ERROR_BAD_FIELD_NAME = 6;
-    const ERROR_NON_UNIQUE_FIELD_NAME = 7;
-    const ERROR_SYNTAX = 9;
-    const ERROR_UNABLE_TO_OPEN = 10;
-    const ERROR_WRITE_READONLY = 11;
-    const ERROR_ACCESS_DENIED = 12;
-
     /**
      * @param string $method
      *
@@ -45,14 +44,55 @@ class DBALException extends \Exception
         return new self("Operation '$method' is not supported by platform.");
     }
 
-    /**
-     * @return \Doctrine\DBAL\DBALException
-     */
-    public static function invalidPlatformSpecified()
+    public static function invalidPlatformSpecified() : self
     {
         return new self(
             "Invalid 'platform' option specified, need to give an instance of ".
             "\Doctrine\DBAL\Platforms\AbstractPlatform.");
+    }
+
+    /**
+     * @param mixed $invalidPlatform
+     */
+    public static function invalidPlatformType($invalidPlatform) : self
+    {
+        if (\is_object($invalidPlatform)) {
+            return new self(
+                sprintf(
+                    "Option 'platform' must be a subtype of '%s', instance of '%s' given",
+                    AbstractPlatform::class,
+                    \get_class($invalidPlatform)
+                )
+            );
+        }
+
+        return new self(
+            sprintf(
+                "Option 'platform' must be an object and subtype of '%s'. Got '%s'",
+                AbstractPlatform::class,
+                \gettype($invalidPlatform)
+            )
+        );
+    }
+
+    /**
+     * Returns a new instance for an invalid specified platform version.
+     *
+     * @param string $version        The invalid platform version given.
+     * @param string $expectedFormat The expected platform version format.
+     *
+     * @return DBALException
+     */
+    public static function invalidPlatformVersionSpecified($version, $expectedFormat)
+    {
+        return new self(
+            sprintf(
+                'Invalid platform version "%s" specified. ' .
+                'The platform version has to be specified in the format: "%s".',
+                $version,
+                $expectedFormat
+            )
+        );
     }
 
     /**
@@ -67,10 +107,22 @@ class DBALException extends \Exception
     }
 
     /**
+     * @param string|null $url The URL that was provided in the connection parameters (if any).
+     *
      * @return \Doctrine\DBAL\DBALException
      */
-    public static function driverRequired()
+    public static function driverRequired($url = null)
     {
+        if ($url) {
+            return new self(
+                sprintf(
+                    "The options 'driver' or 'driverClass' are mandatory if a connection URL without scheme " .
+                    "is given to DriverManager::getConnection(). Given URL: %s",
+                    $url
+                )
+            );
+        }
+
         return new self("The options 'driver' or 'driverClass' are mandatory if no PDO ".
             "instance is given to DriverManager::getConnection().");
     }
@@ -88,14 +140,14 @@ class DBALException extends \Exception
     }
 
     /**
-     * @param \Doctrine\DBAL\Driver     $driver
-     * @param \Exception $driverEx
-     * @param string     $sql
-     * @param array      $params
+     * @param \Doctrine\DBAL\Driver $driver
+     * @param \Exception            $driverEx
+     * @param string                $sql
+     * @param array                 $params
      *
      * @return \Doctrine\DBAL\DBALException
      */
-    public static function driverExceptionDuringQuery(Driver $driver, \Exception $driverEx, $sql, array $params = array())
+    public static function driverExceptionDuringQuery(Driver $driver, \Exception $driverEx, $sql, array $params = [])
     {
         $msg = "An exception occurred while executing '".$sql."'";
         if ($params) {
@@ -103,78 +155,36 @@ class DBALException extends \Exception
         }
         $msg .= ":\n\n".$driverEx->getMessage();
 
-        $code = ($driver instanceof ExceptionConverterDriver)
-            ? $driver->convertExceptionCode($driverEx)
-            : 0;
-
-        return self::createDriverException($msg, $code, $driverEx);
+        return static::wrapException($driver, $driverEx, $msg);
     }
 
     /**
-     * @param \Doctrine\DBAL\Driver     $driver
-     * @param \Exception $driverEx
+     * @param \Doctrine\DBAL\Driver $driver
+     * @param \Exception            $driverEx
      *
      * @return \Doctrine\DBAL\DBALException
      */
     public static function driverException(Driver $driver, \Exception $driverEx)
     {
-        $msg = "An exception occured in driver: " . $driverEx->getMessage();
-
-        $code = ($driver instanceof ExceptionConverterDriver)
-            ? $driver->convertExceptionCode($driverEx)
-            : 0;
-
-        return self::createDriverException($msg, $code, $driverEx);
+        return static::wrapException($driver, $driverEx, "An exception occurred in driver: " . $driverEx->getMessage());
     }
 
     /**
-     * Factory method for subclasses of DBALException based on exception code.
-     *
-     * @param string     $msg      The driver error message.
-     * @param integer    $code     The DBAL driver error code. One of the DBALException::ERROR_* constants.
-     * @param \Exception $driverEx The underlying driver exception to wrap.
+     * @param \Doctrine\DBAL\Driver $driver
+     * @param \Exception            $driverEx
      *
      * @return \Doctrine\DBAL\DBALException
      */
-    private static function createDriverException($msg, $code, $driverEx)
+    private static function wrapException(Driver $driver, \Exception $driverEx, $msg)
     {
-        switch ($code) {
-            case self::ERROR_NOT_NULL:
-                return new Exception\NotNullableException($msg, $code, $driverEx);
-
-            case self::ERROR_DUPLICATE_KEY:
-                return new Exception\DuplicateKeyException($msg, $code, $driverEx);
-
-            case self::ERROR_FOREIGN_KEY_CONSTRAINT:
-                return new Exception\ForeignKeyConstraintViolationException($msg, $code, $driverEx);
-
-            case self::ERROR_ACCESS_DENIED:
-                return new Exception\AccessDeniedException($msg, $code, $driverEx);
-
-            case self::ERROR_BAD_FIELD_NAME:
-                return new Exception\InvalidFieldNameException($msg, $code, $driverEx);
-
-            case self::ERROR_NON_UNIQUE_FIELD_NAME:
-                return new Exception\NonUniqueFieldNameException($msg, $code, $driverEx);
-
-            case self::ERROR_SYNTAX:
-                return new Exception\SyntaxErrorException($msg, $code, $driverEx);
-
-            case self::ERROR_TABLE_ALREADY_EXISTS:
-                return new Exception\TableExistsException($msg, $code, $driverEx);
-
-            case self::ERROR_UNABLE_TO_OPEN:
-                return new Exception\FailedToOpenException($msg, $code, $driverEx);
-
-            case self::ERROR_UNKNOWN_TABLE:
-                return new Exception\TableNotFoundException($msg, $code, $driverEx);
-
-            case self::ERROR_WRITE_READONLY:
-                return new Exception\ReadOnlyException($msg, $code, $driverEx);
-
-            default:
-                return new self($msg, $code, $driverEx);
+        if ($driverEx instanceof Exception\DriverException) {
+            return $driverEx;
         }
+        if ($driver instanceof ExceptionConverterDriver && $driverEx instanceof Driver\DriverException) {
+            return $driver->convertException($msg, $driverEx);
+        }
+
+        return new self($msg, 0, $driverEx);
     }
 
     /**
@@ -188,6 +198,10 @@ class DBALException extends \Exception
     private static function formatParameters(array $params)
     {
         return '[' . implode(', ', array_map(function ($param) {
+            if (is_resource($param)) {
+                return (string) $param;
+            }
+            
             $json = @json_encode($param);
 
             if (! is_string($json) || $json == 'null' && is_string($param)) {
@@ -246,7 +260,7 @@ class DBALException extends \Exception
      */
     public static function limitOffsetInvalid()
     {
-        return new self("Invalid Offset in Limit Query, it has to be larger or equal to 0.");
+        return new self("Invalid Offset in Limit Query, it has to be larger than or equal to 0.");
     }
 
     /**
@@ -269,7 +283,7 @@ class DBALException extends \Exception
         return new self('Unknown column type "'.$name.'" requested. Any Doctrine type that you use has ' .
             'to be registered with \Doctrine\DBAL\Types\Type::addType(). You can get a list of all the ' .
             'known types with \Doctrine\DBAL\Types\Type::getTypesMap(). If this error occurs during database ' .
-            'introspection then you might have forgot to register all database types for a Doctrine Type. Use ' .
+            'introspection then you might have forgotten to register all database types for a Doctrine Type. Use ' .
             'AbstractPlatform#registerDoctrineTypeMapping() or have your custom types implement ' .
             'Type#getMappedDatabaseTypes(). If the type name is empty you might ' .
             'have a problem with the cache or forgot some mapping information.'

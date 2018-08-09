@@ -1,104 +1,124 @@
 <?php
 
 namespace Doctrine\Tests\DBAL\Functional;
-use Doctrine\DBAL\Types\Type;
-use Doctrine\DBAL\Cache\QueryCacheProfile;
-use PDO;
 
-require_once __DIR__ . '/../../TestInit.php';
+use Doctrine\DBAL\Cache\QueryCacheProfile;
+use Doctrine\DBAL\FetchMode;
+use Doctrine\DBAL\Logging\DebugStack;
+use const CASE_LOWER;
+use function array_change_key_case;
+use function array_merge;
+use function array_shift;
+use function array_values;
+use function is_array;
 
 /**
  * @group DDC-217
  */
 class ResultCacheTest extends \Doctrine\Tests\DbalFunctionalTestCase
 {
+    /**
+     * @var int[][]|string[][]
+     */
     private $expectedResult = array(array('test_int' => 100, 'test_string' => 'foo'), array('test_int' => 200, 'test_string' => 'bar'), array('test_int' => 300, 'test_string' => 'baz'));
+
+    /**
+     * @var DebugStack
+     */
     private $sqlLogger;
 
-    public function setUp()
+    protected function setUp()
     {
         parent::setUp();
 
-        try {
-            /* @var $sm \Doctrine\DBAL\Schema\AbstractSchemaManager */
-            $table = new \Doctrine\DBAL\Schema\Table("caching");
-            $table->addColumn('test_int', 'integer');
-            $table->addColumn('test_string', 'string', array('notnull' => false));
-            $table->setPrimaryKey(array('test_int'));
+        $table = new \Doctrine\DBAL\Schema\Table("caching");
+        $table->addColumn('test_int', 'integer');
+        $table->addColumn('test_string', 'string', array('notnull' => false));
+        $table->setPrimaryKey(array('test_int'));
 
-            $sm = $this->_conn->getSchemaManager();
-            $sm->createTable($table);
-        } catch(\Exception $e) {
+        $sm = $this->_conn->getSchemaManager();
+        $sm->createTable($table);
 
-        }
-        $this->_conn->executeUpdate('DELETE FROM caching');
-        foreach ($this->expectedResult AS $row) {
+        foreach ($this->expectedResult as $row) {
             $this->_conn->insert('caching', $row);
         }
 
         $config = $this->_conn->getConfiguration();
-        $config->setSQLLogger($this->sqlLogger = new \Doctrine\DBAL\Logging\DebugStack);
+        $config->setSQLLogger($this->sqlLogger = new DebugStack);
 
         $cache = new \Doctrine\Common\Cache\ArrayCache;
         $config->setResultCacheImpl($cache);
     }
 
+    protected function tearDown()
+    {
+        $this->_conn->getSchemaManager()->dropTable('caching');
+
+        parent::tearDown();
+    }
+
     public function testCacheFetchAssoc()
     {
-        $this->assertCacheNonCacheSelectSameFetchModeAreEqual($this->expectedResult, \PDO::FETCH_ASSOC);
+        self::assertCacheNonCacheSelectSameFetchModeAreEqual(
+            $this->expectedResult,
+            FetchMode::ASSOCIATIVE
+        );
     }
 
     public function testFetchNum()
     {
         $expectedResult = array();
-        foreach ($this->expectedResult AS $v) {
+        foreach ($this->expectedResult as $v) {
             $expectedResult[] = array_values($v);
         }
-        $this->assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, \PDO::FETCH_NUM);
+
+        self::assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, FetchMode::NUMERIC);
     }
 
     public function testFetchBoth()
     {
         $expectedResult = array();
-        foreach ($this->expectedResult AS $v) {
+        foreach ($this->expectedResult as $v) {
             $expectedResult[] = array_merge($v, array_values($v));
         }
-        $this->assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, \PDO::FETCH_BOTH);
+
+        self::assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, FetchMode::MIXED);
     }
-	
+
     public function testFetchColumn()
     {
         $expectedResult = array();
-        foreach ($this->expectedResult AS $v) {
+        foreach ($this->expectedResult as $v) {
             $expectedResult[] = array_shift($v);
         }
-        $this->assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, \PDO::FETCH_COLUMN);
+
+        self::assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, FetchMode::COLUMN);
     }
 
     public function testMixingFetch()
     {
         $numExpectedResult = array();
-        foreach ($this->expectedResult AS $v) {
+        foreach ($this->expectedResult as $v) {
             $numExpectedResult[] = array_values($v);
         }
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
-        $data = $this->hydrateStmt($stmt, \PDO::FETCH_ASSOC);
+        $data = $this->hydrateStmt($stmt, FetchMode::ASSOCIATIVE);
 
-        $this->assertEquals($this->expectedResult, $data);
+        self::assertEquals($this->expectedResult, $data);
 
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
-        $data = $this->hydrateStmt($stmt, \PDO::FETCH_NUM);
+        $data = $this->hydrateStmt($stmt, FetchMode::NUMERIC);
 
-        $this->assertEquals($numExpectedResult, $data);
+        self::assertEquals($numExpectedResult, $data);
     }
 
     public function testIteratorFetch()
     {
-        $this->assertStandardAndIteratorFetchAreEqual(\PDO::FETCH_BOTH);
-        $this->assertStandardAndIteratorFetchAreEqual(\PDO::FETCH_ASSOC);
-        $this->assertStandardAndIteratorFetchAreEqual(\PDO::FETCH_NUM);
+        self::assertStandardAndIteratorFetchAreEqual(FetchMode::MIXED);
+        self::assertStandardAndIteratorFetchAreEqual(FetchMode::ASSOCIATIVE);
+        self::assertStandardAndIteratorFetchAreEqual(FetchMode::NUMERIC);
     }
 
     public function assertStandardAndIteratorFetchAreEqual($fetchMode)
@@ -109,7 +129,7 @@ class ResultCacheTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
         $data_iterator = $this->hydrateStmtIterator($stmt, $fetchMode);
 
-        $this->assertEquals($data, $data_iterator);
+        self::assertEquals($data, $data_iterator);
     }
 
     public function testDontCloseNoCache()
@@ -117,48 +137,50 @@ class ResultCacheTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
         $data = array();
-        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+
+        while ($row = $stmt->fetch(FetchMode::ASSOCIATIVE)) {
             $data[] = $row;
         }
 
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
         $data = array();
-        while ($row = $stmt->fetch(\PDO::FETCH_NUM)) {
+
+        while ($row = $stmt->fetch(FetchMode::NUMERIC)) {
             $data[] = $row;
         }
 
-        $this->assertEquals(2, count($this->sqlLogger->queries));
+        self::assertCount(2, $this->sqlLogger->queries);
     }
 
     public function testDontFinishNoCache()
     {
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $stmt->fetch(FetchMode::ASSOCIATIVE);
         $stmt->closeCursor();
 
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
-        $data = $this->hydrateStmt($stmt, \PDO::FETCH_NUM);
+        $this->hydrateStmt($stmt, FetchMode::NUMERIC);
 
-        $this->assertEquals(2, count($this->sqlLogger->queries));
+        self::assertCount(2, $this->sqlLogger->queries);
     }
 
     public function assertCacheNonCacheSelectSameFetchModeAreEqual($expectedResult, $fetchMode)
     {
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
-        $this->assertEquals(2, $stmt->columnCount());
+        self::assertEquals(2, $stmt->columnCount());
         $data = $this->hydrateStmt($stmt, $fetchMode);
-        $this->assertEquals($expectedResult, $data);
+        self::assertEquals($expectedResult, $data);
 
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching ORDER BY test_int ASC", array(), array(), new QueryCacheProfile(10, "testcachekey"));
 
-        $this->assertEquals(2, $stmt->columnCount());
+        self::assertEquals(2, $stmt->columnCount());
         $data = $this->hydrateStmt($stmt, $fetchMode);
-        $this->assertEquals($expectedResult, $data);
-        $this->assertEquals(1, count($this->sqlLogger->queries), "just one dbal hit");
+        self::assertEquals($expectedResult, $data);
+        self::assertCount(1, $this->sqlLogger->queries, "just one dbal hit");
     }
 
     public function testEmptyResultCache()
@@ -169,7 +191,7 @@ class ResultCacheTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching WHERE test_int > 500", array(), array(), new QueryCacheProfile(10, "emptycachekey"));
         $data = $this->hydrateStmt($stmt);
 
-        $this->assertEquals(1, count($this->sqlLogger->queries), "just one dbal hit");
+        self::assertCount(1, $this->sqlLogger->queries, "just one dbal hit");
     }
 
     public function testChangeCacheImpl()
@@ -181,11 +203,11 @@ class ResultCacheTest extends \Doctrine\Tests\DbalFunctionalTestCase
         $stmt = $this->_conn->executeQuery("SELECT * FROM caching WHERE test_int > 500", array(), array(), new QueryCacheProfile(10, "emptycachekey", $secondCache));
         $data = $this->hydrateStmt($stmt);
 
-        $this->assertEquals(2, count($this->sqlLogger->queries), "two hits");
-        $this->assertEquals(1, count($secondCache->fetch("emptycachekey")));
+        self::assertCount(2, $this->sqlLogger->queries, "two hits");
+        self::assertCount(1, $secondCache->fetch("emptycachekey"));
     }
 
-    private function hydrateStmt($stmt, $fetchMode = \PDO::FETCH_ASSOC)
+    private function hydrateStmt($stmt, $fetchMode = FetchMode::ASSOCIATIVE)
     {
         $data = array();
         while ($row = $stmt->fetch($fetchMode)) {
@@ -195,7 +217,7 @@ class ResultCacheTest extends \Doctrine\Tests\DbalFunctionalTestCase
         return $data;
     }
 
-    private function hydrateStmtIterator($stmt, $fetchMode = \PDO::FETCH_ASSOC)
+    private function hydrateStmtIterator($stmt, $fetchMode = FetchMode::ASSOCIATIVE)
     {
         $data = array();
         $stmt->setFetchMode($fetchMode);

@@ -19,6 +19,29 @@
 
 namespace Doctrine\DBAL\Schema;
 
+use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\DBAL\FetchMode;
+use Doctrine\DBAL\Platforms\PostgreSqlPlatform;
+use Doctrine\DBAL\Types\Type;
+use const CASE_LOWER;
+use function array_change_key_case;
+use function array_filter;
+use function array_keys;
+use function array_map;
+use function array_shift;
+use function assert;
+use function explode;
+use function in_array;
+use function join;
+use function preg_match;
+use function preg_replace;
+use function str_replace;
+use function stripos;
+use function strlen;
+use function strpos;
+use function strtolower;
+use function trim;
+
 /**
  * PostgreSQL Schema Manager.
  *
@@ -41,9 +64,9 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
      */
     public function getSchemaNames()
     {
-        $rows = $this->_conn->fetchAll("SELECT nspname as schema_name FROM pg_namespace WHERE nspname !~ '^pg_.*' and nspname != 'information_schema'");
+        $statement = $this->_conn->executeQuery("SELECT nspname FROM pg_namespace WHERE nspname !~ '^pg_.*' AND nspname != 'information_schema'");
 
-        return array_map(function ($v) { return $v['schema_name']; }, $rows);
+        return $statement->fetchAll(FetchMode::COLUMN);
     }
 
     /**
@@ -101,10 +124,42 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
     /**
      * {@inheritdoc}
      */
+    public function dropDatabase($database)
+    {
+        try {
+            parent::dropDatabase($database);
+        } catch (DriverException $exception) {
+            // If we have a SQLSTATE 55006, the drop database operation failed
+            // because of active connections on the database.
+            // To force dropping the database, we first have to close all active connections
+            // on that database and issue the drop database operation again.
+            if ($exception->getSQLState() !== '55006') {
+                throw $exception;
+            }
+
+            assert($this->_platform instanceof PostgreSqlPlatform);
+
+            $this->_execSql(
+                [
+                    $this->_platform->getDisallowDatabaseConnectionsSQL($database),
+                    $this->_platform->getCloseActiveDatabaseConnectionsSQL($database),
+                ]
+            );
+
+            parent::dropDatabase($database);
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     protected function _getPortableTableForeignKeyDefinition($tableForeignKey)
     {
-        $onUpdate = null;
-        $onDelete = null;
+        $onUpdate       = null;
+        $onDelete       = null;
+        $localColumns   = null;
+        $foreignColumns = null;
+        $foreignTable   = null;
 
         if (preg_match('(ON UPDATE ([a-zA-Z0-9]+( (NULL|ACTION|DEFAULT))?))', $tableForeignKey['condef'], $match)) {
             $onUpdate = $match[1];
@@ -122,51 +177,9 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
         }
 
         return new ForeignKeyConstraint(
-                $localColumns, $foreignTable, $foreignColumns, $tableForeignKey['conname'],
-                array('onUpdate' => $onUpdate, 'onDelete' => $onDelete)
+            $localColumns, $foreignTable, $foreignColumns, $tableForeignKey['conname'],
+            ['onUpdate' => $onUpdate, 'onDelete' => $onDelete]
         );
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function dropDatabase($database)
-    {
-        $params = $this->_conn->getParams();
-        $params["dbname"] = "postgres";
-        $tmpPlatform = $this->_platform;
-        $tmpConn = $this->_conn;
-
-        $this->_conn = \Doctrine\DBAL\DriverManager::getConnection($params);
-        $this->_platform = $this->_conn->getDatabasePlatform();
-
-        parent::dropDatabase($database);
-
-        $this->_conn->close();
-
-        $this->_platform = $tmpPlatform;
-        $this->_conn = $tmpConn;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function createDatabase($database)
-    {
-        $params = $this->_conn->getParams();
-        $params["dbname"] = "postgres";
-        $tmpPlatform = $this->_platform;
-        $tmpConn = $this->_conn;
-
-        $this->_conn = \Doctrine\DBAL\DriverManager::getConnection($params);
-        $this->_platform = $this->_conn->getDatabasePlatform();
-
-        parent::createDatabase($database);
-
-        $this->_conn->close();
-
-        $this->_platform = $tmpPlatform;
-        $this->_conn = $tmpConn;
     }
 
     /**
@@ -190,10 +203,10 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
      */
     protected function _getPortableUserDefinition($user)
     {
-        return array(
+        return [
             'user' => $user['usename'],
             'password' => $user['passwd']
-        );
+        ];
     }
 
     /**
@@ -206,9 +219,9 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
 
         if ($table['schema_name'] == $firstSchema) {
             return $table['table_name'];
-        } else {
-            return $table['schema_name'] . "." . $table['table_name'];
         }
+
+        return $table['schema_name'] . "." . $table['table_name'];
     }
 
     /**
@@ -219,7 +232,7 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
      */
     protected function _getPortableTableIndexesList($tableIndexes, $tableName=null)
     {
-        $buffer = array();
+        $buffer = [];
         foreach ($tableIndexes as $row) {
             $colNumbers = explode(' ', $row['indkey']);
             $colNumbersSql = 'IN (' . join(' ,', $colNumbers) . ' )';
@@ -233,12 +246,13 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
             foreach ($colNumbers as $colNum) {
                 foreach ($indexColumns as $colRow) {
                     if ($colNum == $colRow['attnum']) {
-                        $buffer[] = array(
+                        $buffer[] = [
                             'key_name' => $row['relname'],
                             'column_name' => trim($colRow['attname']),
                             'non_unique' => !$row['indisunique'],
-                            'primary' => $row['indisprimary']
-                        );
+                            'primary' => $row['indisprimary'],
+                            'where' => $row['where'],
+                        ];
                     }
                 }
             }
@@ -258,17 +272,56 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
     /**
      * {@inheritdoc}
      */
+    protected function _getPortableSequencesList($sequences)
+    {
+        $sequenceDefinitions = [];
+
+        foreach ($sequences as $sequence) {
+            if ($sequence['schemaname'] != 'public') {
+                $sequenceName = $sequence['schemaname'] . "." . $sequence['relname'];
+            } else {
+                $sequenceName = $sequence['relname'];
+            }
+
+            $sequenceDefinitions[$sequenceName] = $sequence;
+        }
+
+        $list = [];
+
+        foreach ($this->filterAssetNames(array_keys($sequenceDefinitions)) as $sequenceName) {
+            $list[] = $this->_getPortableSequenceDefinition($sequenceDefinitions[$sequenceName]);
+        }
+
+        return $list;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function getPortableNamespaceDefinition(array $namespace)
+    {
+        return $namespace['nspname'];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     protected function _getPortableSequenceDefinition($sequence)
     {
-        if ($sequence['schemaname'] != 'public') {
+        if ($sequence['schemaname'] !== 'public') {
             $sequenceName = $sequence['schemaname'] . "." . $sequence['relname'];
         } else {
             $sequenceName = $sequence['relname'];
         }
 
-        $data = $this->_conn->fetchAll('SELECT min_value, increment_by FROM ' . $this->_platform->quoteIdentifier($sequenceName));
+        if ( ! isset($sequence['increment_by'], $sequence['min_value'])) {
+            /** @var string[] $data */
+            $data      = $this->_conn->fetchAssoc('SELECT min_value, increment_by FROM ' . $this->_platform->quoteIdentifier($sequenceName));
 
-        return new Sequence($sequenceName, $data[0]['increment_by'], $data[0]['min_value']);
+            $sequence += $data;
+        }
+
+        return new Sequence($sequenceName, (int) $sequence['increment_by'], (int) $sequence['min_value']);
     }
 
     /**
@@ -278,13 +331,13 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
     {
         $tableColumn = array_change_key_case($tableColumn, CASE_LOWER);
 
-        if (strtolower($tableColumn['type']) === 'varchar') {
+        if (strtolower($tableColumn['type']) === 'varchar' || strtolower($tableColumn['type']) === 'bpchar') {
             // get length from varchar definition
             $length = preg_replace('~.*\(([0-9]*)\).*~', '$1', $tableColumn['complete_type']);
             $tableColumn['length'] = $length;
         }
 
-        $matches = array();
+        $matches = [];
 
         $autoincrement = false;
         if (preg_match("/^nextval\('(.*)'(::.*)?\)$/", $tableColumn['default'], $matches)) {
@@ -293,7 +346,7 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
             $autoincrement = true;
         }
 
-        if (preg_match("/^'(.*)'::.*$/", $tableColumn['default'], $matches)) {
+        if (preg_match("/^['(](.*)[')]::.*$/", $tableColumn['default'], $matches)) {
             $tableColumn['default'] = $matches[1];
         }
 
@@ -301,7 +354,7 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
             $tableColumn['default'] = null;
         }
 
-        $length = (isset($tableColumn['length'])) ? $tableColumn['length'] : null;
+        $length = $tableColumn['length'] ?? null;
         if ($length == '-1' && isset($tableColumn['atttypmod'])) {
             $length = $tableColumn['atttypmod'] - 4;
         }
@@ -316,6 +369,7 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
 
         $precision = null;
         $scale = null;
+        $jsonb = null;
 
         $dbType = strtolower($tableColumn['type']);
         if (strlen($tableColumn['domain_type']) && !$this->_platform->hasDoctrineTypeMappingFor($tableColumn['type'])) {
@@ -330,15 +384,18 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
         switch ($dbType) {
             case 'smallint':
             case 'int2':
+                $tableColumn['default'] = $this->fixVersion94NegativeNumericDefaultValue($tableColumn['default']);
                 $length = null;
                 break;
             case 'int':
             case 'int4':
             case 'integer':
+                $tableColumn['default'] = $this->fixVersion94NegativeNumericDefaultValue($tableColumn['default']);
                 $length = null;
                 break;
             case 'bigint':
             case 'int8':
+                $tableColumn['default'] = $this->fixVersion94NegativeNumericDefaultValue($tableColumn['default']);
                 $length = null;
                 break;
             case 'bool':
@@ -374,6 +431,8 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
             case 'decimal':
             case 'money':
             case 'numeric':
+                $tableColumn['default'] = $this->fixVersion94NegativeNumericDefaultValue($tableColumn['default']);
+
                 if (preg_match('([A-Za-z]+\(([0-9]+)\,([0-9]+)\))', $tableColumn['complete_type'], $match)) {
                     $precision = $match[1];
                     $scale = $match[2];
@@ -383,25 +442,57 @@ class PostgreSqlSchemaManager extends AbstractSchemaManager
             case 'year':
                 $length = null;
                 break;
+
+            // PostgreSQL 9.4+ only
+            case 'jsonb':
+                $jsonb = true;
+                break;
         }
 
         if ($tableColumn['default'] && preg_match("('([^']+)'::)", $tableColumn['default'], $match)) {
             $tableColumn['default'] = $match[1];
         }
 
-        $options = array(
+        $options = [
             'length'        => $length,
             'notnull'       => (bool) $tableColumn['isnotnull'],
             'default'       => $tableColumn['default'],
-            'primary'       => (bool) ($tableColumn['pri'] == 't'),
             'precision'     => $precision,
             'scale'         => $scale,
             'fixed'         => $fixed,
             'unsigned'      => false,
             'autoincrement' => $autoincrement,
-            'comment'       => $tableColumn['comment'],
-        );
+            'comment'       => isset($tableColumn['comment']) && $tableColumn['comment'] !== ''
+                ? $tableColumn['comment']
+                : null,
+        ];
 
-        return new Column($tableColumn['field'], \Doctrine\DBAL\Types\Type::getType($type), $options);
+        $column = new Column($tableColumn['field'], Type::getType($type), $options);
+
+        if (isset($tableColumn['collation']) && !empty($tableColumn['collation'])) {
+            $column->setPlatformOption('collation', $tableColumn['collation']);
+        }
+
+        if (in_array($column->getType()->getName(), [Type::JSON_ARRAY, Type::JSON], true)) {
+            $column->setPlatformOption('jsonb', $jsonb);
+        }
+
+        return $column;
+    }
+
+    /**
+     * PostgreSQL 9.4 puts parentheses around negative numeric default values that need to be stripped eventually.
+     *
+     * @param mixed $defaultValue
+     *
+     * @return mixed
+     */
+    private function fixVersion94NegativeNumericDefaultValue($defaultValue)
+    {
+        if (strpos($defaultValue, '(') === 0) {
+            return trim($defaultValue, '()');
+        }
+
+        return $defaultValue;
     }
 }

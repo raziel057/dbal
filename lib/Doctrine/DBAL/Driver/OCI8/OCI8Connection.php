@@ -20,14 +20,33 @@
 namespace Doctrine\DBAL\Driver\OCI8;
 
 use Doctrine\DBAL\Driver\Connection;
-use Doctrine\DBAL\Platforms\OraclePlatform;
+use Doctrine\DBAL\Driver\ServerInfoAwareConnection;
+use Doctrine\DBAL\ParameterType;
+use const OCI_COMMIT_ON_SUCCESS;
+use const OCI_DEFAULT;
+use const OCI_NO_AUTO_COMMIT;
+use function addcslashes;
+use function define;
+use function defined;
+use function func_get_args;
+use function is_float;
+use function is_int;
+use function oci_commit;
+use function oci_connect;
+use function oci_error;
+use function oci_pconnect;
+use function oci_rollback;
+use function oci_server_version;
+use function preg_match;
+use function sprintf;
+use function str_replace;
 
 /**
  * OCI8 implementation of the Connection interface.
  *
  * @since 2.0
  */
-class OCI8Connection implements Connection
+class OCI8Connection implements Connection, ServerInfoAwareConnection
 {
     /**
      * @var resource
@@ -35,7 +54,7 @@ class OCI8Connection implements Connection
     protected $dbh;
 
     /**
-     * @var integer
+     * @var int
      */
     protected $executeMode = OCI_COMMIT_ON_SUCCESS;
 
@@ -46,8 +65,8 @@ class OCI8Connection implements Connection
      * @param string      $password
      * @param string      $db
      * @param string|null $charset
-     * @param integer     $sessionMode
-     * @param boolean     $persistent
+     * @param int         $sessionMode
+     * @param bool        $persistent
      *
      * @throws OCI8Exception
      */
@@ -64,6 +83,35 @@ class OCI8Connection implements Connection
         if ( ! $this->dbh) {
             throw OCI8Exception::fromErrorInfo(oci_error());
         }
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * @throws \UnexpectedValueException if the version string returned by the database server
+     *                                   does not contain a parsable version number.
+     */
+    public function getServerVersion()
+    {
+        if ( ! preg_match('/\s+(\d+\.\d+\.\d+\.\d+\.\d+)\s+/', oci_server_version($this->dbh), $version)) {
+            throw new \UnexpectedValueException(
+                sprintf(
+                    'Unexpected database version string "%s". Cannot parse an appropriate version number from it. ' .
+                    'Please report this database version string to the Doctrine team.',
+                    oci_server_version($this->dbh)
+                )
+            );
+        }
+
+        return $version[1];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function requiresQueryForServerVersion()
+    {
+        return false;
     }
 
     /**
@@ -91,7 +139,7 @@ class OCI8Connection implements Connection
     /**
      * {@inheritdoc}
      */
-    public function quote($value, $type=\PDO::PARAM_STR)
+    public function quote($value, $type = ParameterType::STRING)
     {
         if (is_int($value) || is_float($value)) {
             return $value;
@@ -121,23 +169,21 @@ class OCI8Connection implements Connection
             return false;
         }
 
-        OraclePlatform::assertValidIdentifier($name);
-
         $sql    = 'SELECT ' . $name . '.CURRVAL FROM DUAL';
         $stmt   = $this->query($sql);
-        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $result = $stmt->fetchColumn();
 
-        if ($result === false || !isset($result['CURRVAL'])) {
+        if ($result === false) {
             throw new OCI8Exception("lastInsertId failed: Query was executed but no result was returned.");
         }
 
-        return (int) $result['CURRVAL'];
+        return (int) $result;
     }
 
     /**
      * Returns the current execution mode.
      *
-     * @return integer
+     * @return int
      */
     public function getExecuteMode()
     {

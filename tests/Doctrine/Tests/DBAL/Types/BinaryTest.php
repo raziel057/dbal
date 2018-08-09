@@ -2,10 +2,12 @@
 
 namespace Doctrine\Tests\DBAL\Types;
 
+use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Types\Type;
-use Doctrine\Tests\DBAL\Mocks;
-
-require_once __DIR__ . '/../../TestInit.php';
+use Doctrine\Tests\DBAL\Mocks\MockPlatform;
+use function base64_encode;
+use function fopen;
+use function stream_get_contents;
 
 class BinaryTest extends \Doctrine\Tests\DbalTestCase
 {
@@ -24,28 +26,28 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
      */
     protected function setUp()
     {
-        $this->platform = new \Doctrine\Tests\DBAL\Mocks\MockPlatform();
+        $this->platform = new MockPlatform();
         $this->type     = Type::getType('binary');
     }
 
     public function testReturnsBindingType()
     {
-        $this->assertSame(\PDO::PARAM_LOB, $this->type->getBindingType());
+        self::assertSame(ParameterType::BINARY, $this->type->getBindingType());
     }
 
     public function testReturnsName()
     {
-        $this->assertSame(Type::BINARY, $this->type->getName());
+        self::assertSame(Type::BINARY, $this->type->getName());
     }
 
     public function testReturnsSQLDeclaration()
     {
-        $this->assertSame('DUMMYBINARY', $this->type->getSQLDeclaration(array(), $this->platform));
+        self::assertSame('DUMMYBINARY', $this->type->getSQLDeclaration(array(), $this->platform));
     }
 
     public function testBinaryNullConvertsToPHPValue()
     {
-        $this->assertNull($this->type->convertToPHPValue(null, $this->platform));
+        self::assertNull($this->type->convertToPHPValue(null, $this->platform));
     }
 
     public function testBinaryStringConvertsToPHPValue()
@@ -53,8 +55,8 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
         $databaseValue = 'binary string';
         $phpValue      = $this->type->convertToPHPValue($databaseValue, $this->platform);
 
-        $this->assertInternalType('resource', $phpValue);
-        $this->assertEquals($databaseValue, stream_get_contents($phpValue));
+        self::assertInternalType('resource', $phpValue);
+        self::assertEquals($databaseValue, stream_get_contents($phpValue));
     }
 
     public function testBinaryResourceConvertsToPHPValue()
@@ -62,7 +64,7 @@ class BinaryTest extends \Doctrine\Tests\DbalTestCase
         $databaseValue = fopen('data://text/plain;base64,' . base64_encode('binary string'), 'r');
         $phpValue      = $this->type->convertToPHPValue($databaseValue, $this->platform);
 
-        $this->assertSame($databaseValue, $phpValue);
+        self::assertSame($databaseValue, $phpValue);
     }
 
     /**

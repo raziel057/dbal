@@ -10,4 +10,9 @@ class PostgreSqlPlatformTest extends AbstractPostgreSqlPlatformTestCase
     {
         return new PostgreSqlPlatform;
     }
+
+    public function testSupportsPartialIndexes()
+    {
+        self::assertTrue($this->_platform->supportsPartialIndexes());
+    }
 }
